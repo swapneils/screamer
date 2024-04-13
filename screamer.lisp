@@ -58,7 +58,7 @@ to DEFPACKAGE, and automatically injects two additional options:
 
 (defmacro defvar-compile-time (name &optional initial-value documentation)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (defvar ,name ,initial-value ,documentation)))
+     (defvar ,name ,initial-value ,@(when documentation (list documentation)))))
 
 (defmacro defun-compile-time (function-name lambda-list &body body)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
@@ -273,8 +273,8 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
     (body &optional documentation-string?)
   ;; NOTE: This will need to be done as well for LOCALLY and MACROLET when we
   ;;       eventually implement them.
-  ;; needs work: This requires that the documentation string preceed all
-  ;;             declarations which needs to be fixed.
+  ;; TODO: This requires that the documentation string preceed all
+  ;;       declarations which needs to be fixed.
   (let (documentation-string declarations)
     (when (and documentation-string?
                (not (null body))
