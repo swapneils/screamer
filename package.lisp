@@ -27,8 +27,7 @@
 (defpackage :screamer
   (:shadow :defun :multiple-value-bind :y-or-n-p :variable)
   (:use :cl :alexandria)
-  (:local-nicknames (:s :serapeum)
-                    (:iter :iterate))
+  (:local-nicknames (:s :serapeum))
   (:export #:either
            #:either-prob
            #:fail
