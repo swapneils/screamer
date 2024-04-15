@@ -52,33 +52,39 @@ to DEFPACKAGE, and automatically injects two additional options:
 
 (define-screamer-package :screamer-user)
 
-(defmacro defstruct-compile-time (options &body items)
+;;; Needed because Allegro has some bogosity whereby
+;;; (MACRO-FUNCTION <m> <e>) returns NIL during compile time
+;;; when <m> is a macro being defined for the first time in
+;;; the file being compiled, and LW has similar issues at the
+;;; very least in its cross-reference information check.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro defmacro-compile-time (function-name lambda-list &body body)
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (defmacro ,function-name ,lambda-list ,@body))))
+
+(defmacro-compile-time defstruct-compile-time (options &body items)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (defstruct ,options ,@items)))
 
-(defmacro defvar-compile-time (name &optional initial-value documentation)
+(defmacro-compile-time defvar-compile-time (name &optional initial-value documentation)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (defvar ,name ,initial-value ,@(when documentation (list documentation)))))
+(defmacro-compile-time defparameter-compile-time (name &optional initial-value documentation)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (defparameter ,name ,initial-value ,@(when documentation (list documentation)))))
 
-(defmacro defun-compile-time (function-name lambda-list &body body)
+(defmacro-compile-time defun-compile-time (function-name lambda-list &body body)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (cl:defun ,function-name ,lambda-list ,@body)
      (eval-when (:compile-toplevel) (compile ',function-name))))
 
-;;; Needed because Allegro has some bogosity whereby (MACRO-FUNCTION <m> <e>)
-;;; returns NIL during compile time when <m> is a macro being defined for the
-;;; first time in the file being compiled.
-(defmacro defmacro-compile-time (function-name lambda-list &body body)
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (defmacro ,function-name ,lambda-list ,@body)))
-
-(defparameter *screamer-version* (asdf:component-version (asdf:find-system :screamer))
+(defparameter-compile-time *screamer-version* (asdf:component-version (asdf:find-system :screamer))
   "The version of Screamer which is loaded.")
 
-(defvar *iscream?* nil
+(defvar-compile-time *iscream?* nil
   "T if Screamer is running under ILisp/GNUEmacs with iscream.el loaded.")
 
-(defvar *nondeterministic?* nil "This must be globally NIL.")
+(defvar-compile-time *nondeterministic?* nil "This must be globally NIL.")
 
 (defvar-compile-time *screamer?* nil
   "This must be NIL except when defining internal Screamer functions.")
@@ -92,7 +98,7 @@ to DEFPACKAGE, and automatically injects two additional options:
 
 (defvar-compile-time *tagbody-tags* '() "This must be globally NIL.")
 
-(defvar *trail* (make-array 4096 :adjustable t :fill-pointer 0) "The trail.")
+(defvar-compile-time *trail* (make-array 4096 :adjustable t :fill-pointer 0) "The trail.")
 
 (defmacro-compile-time with-trail (size-form &rest body)
   "Evaluates the BODY forms with *trail* set to a new array of the specified size. (*trail* is part of Screamer's backtracking mechanism.)
@@ -104,15 +110,15 @@ SIZE-FORM is a positive integer or a form which evaluates to a positive integer,
                              :fill-pointer 0)))
      ,@body))
 
-(defvar *screamer-results* nil
+(defvar-compile-time *screamer-results* nil
   "A global variable storing the results of the nearest enclosing `-VALUES' or `-VALUES-PROB' form.
 Can be used for finer-grained control of nondeterminism.")
 
-(defparameter *possibility-consolidator* nil
+(defparameter-compile-time *possibility-consolidator* nil
   "If non-nil, must be a function which compares 2 values, used for combining
 possibilities generated in ALL-VALUES and ALL-VALUES-PROB.")
 
-(defvar *numeric-bounds-collapse-threshold* 0.0000000000001
+(defvar-compile-time *numeric-bounds-collapse-threshold* 0.0000000000001
   "The threshold of closeness to consider 2 numbers equivalent.
 Use this to deal with floating-point errors, if necessary.")
 
@@ -3312,12 +3318,13 @@ PRINT-VALUES is analogous to the standard top-level user interface in Prolog."
       (either-prob-internal (t p) (nil (- 1 p)))
       (either-prob-internal (nil (- 1 p)) (t p))))
 
-(defvar *fail* (lambda ()
-                 (if *nondeterministic?*
-                     (throw '%fail nil)
-                     (error "Cannot FAIL: no choice-point to backtrack to."))))
+(defvar-compile-time *fail*
+    (lambda ()
+      (if *nondeterministic?*
+          (throw '%fail nil)
+          (error "Cannot FAIL: no choice-point to backtrack to."))))
 
-(defun fail ()
+(defun-compile-time fail ()
   "Backtracks to the most recent choice-point.
 
 FAIL is deterministic function and thus it is permissible to reference #'FAIL,
