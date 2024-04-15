@@ -7649,19 +7649,24 @@ X2."
   "The inverse of `==v'"
   (/==v-internal x xs))
 
-(s:defalias == #'equalp)
-(s:defalias /== (notf #'equalp))
+(cl:defun == (a &rest xs)
+  (iter:iter (iter:for x in xs)
+    (when (not (equalp a x))
+      (return nil))
+    (iter:finally (return t))))
+(cl:defun /== (a &rest xs) (not (apply #'== a xs)))
 
-(defun all-different (li &key (test #'equal))
+(cl:defun all-different (li &key (test #'equal))
   (if (null (cdr li))
       t
-      (let ((l nil))
-        (not
-         ;; Return t if there *is* a duplicate
-         (loop for i in li
-               when (member i l :test test)
-                 return t
-               do (cached-push i l))))))
+      (iter:iter
+        (iter:for i in li)
+        ;; Return nil if there is a duplicate
+        (when (member i l :test test)
+          (return nil))
+        ;; Track previous values
+        (iter:collect i into l)
+        (iter:finally (return t)))))
 
 (defun all-differentv (inp)
   "Functionally the same as (apply #'/=v inp), but faster.
