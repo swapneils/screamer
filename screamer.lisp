@@ -3307,7 +3307,7 @@ PRINT-VALUES is analogous to the standard top-level user interface in Prolog."
 
 (defun a-boolean-prob (&optional (p 1/2))
   "Equivalent to \(EITHER-PROB (T p) (NIL (- 1 p))."
-  (assert (<= 0 p 1))
+  (assert (<= 0 p 1) nil "`a-boolean-prob' was given ~A, not a valid probability!" p)
   (if (>= p 1/2)
       (either-prob-internal (t p) (nil (- 1 p)))
       (either-prob-internal (nil (- 1 p)) (t p))))
