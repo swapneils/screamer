@@ -303,6 +303,18 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
            (eq thing t)
            (eq (symbol-package thing) (symbol-package :x)))))
 
+(defun-compile-time valid-macro? (thing &optional env)
+  (and (consp thing)
+       (symbolp (first thing))
+       (macro-function (first thing) env)
+       ;; Doesn't expand to itself
+       (not (equal (macroexpand thing env)
+                   thing))))
+(defun-compile-time external-macro? (thing &optional env)
+  (and (valid-macro? thing)
+       (not (member (symbol-package (first thing))
+                    '(:screamer)))))
+
 (defun-compile-time quotify (thing)
   (if (self-evaluating? thing) thing `',thing))
 
@@ -561,9 +573,8 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
 
 ;;; TODO: Set up walkers for labels and flet forms
 ;;; to be converted into local functions on the trail,
-;;; NOTE: The above would allow implementing loops and
-;;; recursion as local functions, rather than having
-;;; to use SCREAMER::DEFUN
+;;; NOTE: The above would allow implementing recursion
+;;; as local functions, rather than needing SCREAMER::DEFUN
 (defun-compile-time walk-flet/labels
     (map-function reduce-function screamer? partial? nested? form environment
                   form-type)
@@ -930,10 +941,6 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
       (funcall map-function form 'setq)))
 
 ;;; TODO: Get this to work properly with tag calls
-;;; NOTE: The above with BLOCK changes would also allow macroexpanding
-;;; loops and then making them nondeterministic, rather than having to
-;;; put looping constructs in top-level defuns
-;;; NOTE: See the `dotimes' test case for a failing test involving tags
 (defun-compile-time walk-tagbody
     (map-function reduce-function screamer? partial? nested? form environment)
   (unless (null (rest (last form))) (error "Improper TAGBODY: ~S" form))
@@ -1233,53 +1240,13 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
 
 (defun-compile-time walk
     (map-function reduce-function screamer? partial? nested? form environment)
+  ;; TODO: Add MACROLET walking (via trivial-environments since this can't
+  ;; otherwise be done portably, with a fallback to fail on this case?)
   ;; needs work: Cannot walk MACROLET or special forms not in both CLtL1 and
   ;;             CLtL2.
   (cond
     ((self-evaluating? form) (funcall map-function form 'quote))
     ((symbolp form) (funcall map-function form 'variable))
-
-
-    ;; TODO: Test `do' form-types, and either remove them or ensure they work.
-
-    ;; `dolist' case
-    ;; ((eq (first form) 'dolist)
-    ;;  (walk map-function reduce-function screamer? partial? nested?
-    ;;        (macroexpand form environment) environment))
-
-    ;; `dotimes' succeeding test cases:
-    ;; (s:nest
-    ;;  (all-values-prob)
-    ;;  (let ((a (dotimes (v 2) (if (a-boolean-prob 7/10) (return v) ))))
-    ;;    a))
-    ;; (let ((len 2))
-    ;;   (s:nest
-    ;;    (all-values-prob)
-    ;;    (let* ((a (dotimes (v len (1+ v))
-    ;;                (let ((c (a-boolean-prob)))
-    ;;                  (if c (return v)
-    ;;                      (print v)))))
-    ;;           (b (+ (typecase a
-    ;;                   (number a)
-    ;;                   (t (print "unexpected NIL") -1))
-    ;;                 (an-integer-between-prob 2 3))))
-    ;;      (solution (list a b) (static-ordering #'linear-force)))))
-    ;; `dotimes' failing test cases:
-    ;; (all-values-prob
-    ;;   (let (a)
-    ;;     (dotimes (v 3)
-    ;;       (push (either-prob (1 1) (2 2) (3 3)) a))
-    ;;     (solution a (static-ordering #'linear-force))))
-    ;; (all-values-prob
-    ;;   (let ((a 3))
-    ;;     (dotimes (v 3)
-    ;;       (setf a (+ (either 1 2 3) a)))
-    ;;     (solution a (static-ordering #'linear-force))))
-    ;; `dotimes' case
-    ;; ((eq (first form) 'dotimes)
-    ;;  (walk map-function reduce-function screamer? partial? nested?
-    ;;        (macroexpand form environment) environment))
-
 
     ((eq (first form) 'block)
      (walk-block
@@ -1368,12 +1335,16 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
      (walk-multiple-value-call-nondeterministic
       map-function reduce-function screamer? partial? nested? form environment))
     ((and partial? (eq (first form) 'full)) (walk-full map-function form))
-    ((and (symbolp (first form))
-          (macro-function (first form) environment))
+
+    ;; Dealing with macros
+    ((valid-macro? form environment)
+     ;; Walk macro call
      (walk-macro-call
       map-function reduce-function screamer? partial? nested? form environment))
+
     ((special-operator-p (first form))
      (error "Cannot (currently) handle the special form ~S" (first form)))
+
     (t (walk-function-call
         map-function reduce-function screamer? partial? nested? form
         environment))))
@@ -2113,11 +2084,7 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
 
 (defun-compile-time cps-convert-tagbody
     (body continuation types value? environment)
-  ;; TODO: Remove this print
-  ;; (print (list "input: " body))
   (s:nest
-   ;; TODO: Remove this print
-   ;; (print)
    (let ((segments (list (list 'header)))
          (*tagbody-tags* *tagbody-tags*)) ;cool!
      (dolist (form body)
@@ -2294,11 +2261,6 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
                     types
                     (perform-substitutions form environment)
                     value?))
-                  ;; TODO: Make GO in TAGBODY forms walkable?
-                  ;; NOTE: Is it already? Not sure if we have
-                  ;; any actual failing test cases...
-                  ;; NOTE: There may be other ways to make
-                  ;; TAGBODY work properly, though...
                   (go (error "This shouldn't happen"))
                   (if (cps-convert-if (second form)
                                       (third form)
@@ -2778,6 +2740,7 @@ rather than macros. This should be completely transparent to the user."
                #'(lambda (form) (perform-substitutions form environment))
                body))))
 
+;;; TODO: Figure out how to make LOOP work with global
 (defmacro-compile-time global (&body body &environment environment)
   "Evaluates BODY in the same fashion as PROGN except that all SETF and SETQ
 forms lexically nested in its body result in global side effects which are not
