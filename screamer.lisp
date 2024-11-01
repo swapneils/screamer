@@ -2764,6 +2764,65 @@ completely transparent to the user."
                #'(lambda (form) (perform-substitutions form environment))
                body))))
 
+(defvar *pure-cache* nil
+  "An alist storing cached location-keys and
+corresponding cache hashmaps for `screamer:pure'
+forms")
+
+;;; TODO: Remove prints in the below
+(cl:defun cache-pure-ensure (location-key)
+  ;; (print "ensure")
+  (cdr (or (assoc location-key *pure-cache* :test 'equal)
+           (progn
+             (push (cons location-key (s:dict))
+                   *pure-cache*)
+             (first *pure-cache*)))))
+
+(cl:defun cache-pure-retrieve (location-key parameters)
+  ;; (print "retrieve")
+  (let* ((cache (cache-pure-ensure location-key)))
+    ;; (format t "~%pre-retrieve cache: ~A" cache)
+    ;; (print "hel")
+    ;; (format t "retrieving loc ~A params ~A. output ~A"
+    ;;         location-key
+    ;;         parameters
+    ;;         cache)
+    (gethash parameters cache)))
+
+(cl:defun cache-pure-put (location-key parameters value)
+  (let* ((cache (cache-pure-ensure location-key)))
+    ;; (format t "~%putting loc ~A params ~A value ~A into ~A"
+    ;;         location-key
+    ;;         parameters
+    ;;         value
+    ;;         cache)
+    (setf (gethash parameters cache) value)
+    ;; (format t "~%post-put cache: ~A" cache)
+    value))
+
+;;; TODO: Finish validating the PURE functionality
+;;; TODO: Figure out if the name should stay PURE or change to something
+;;; else.
+;;; MEMO maybe? Seems like that would conflict with actual memoization
+;;; packages though...
+;;; SCREAMER-MEMO or SCREAMER-PURE are verbose, but at least not conflicting?
+;;;
+(defmacro-compile-time pure (parameters &body body &environment environment)
+  "Evaluates BODY as an implicit LOCAL form. PARAMETERS is a list of expressions
+whose outputs are treated as unique keys for this form; if a set of parameters has
+been previously encountered within the current instance of nondeterministic context,
+the output from that execution will be retrieved from cache without evaluating BODY."
+  (let ((loc-key (gensym "screamer-pure")))
+    (with-gensyms (param-outputs cache-value)
+      `(global
+         (let* ((,param-outputs (list ,@parameters))
+                (,cache-value (screamer::cache-pure-retrieve ',loc-key ,param-outputs)))
+           (values-list
+            (or ,cache-value
+                (screamer::cache-pure-put ',loc-key
+                                          ,param-outputs
+                                          (multiple-value-list (local ,@body))))))))))
+
 (defmacro-compile-time for-effects (&body body &environment environment)
   "Evaluates BODY as an implicit PROGN in a nondeterministic context and
 returns NIL.
@@ -2777,9 +2836,12 @@ A FOR-EFFECTS expression can appear in both deterministic and nondeterministic
 contexts. Irrespective of what context the FOR-EFFECTS appears in, BODY are
 always in a nondeterministic context. A FOR-EFFECTS expression is is always
 deterministic."
-  `(choice-point
-    ,(let ((*nondeterministic-context?* t))
-       (cps-convert-progn body '#'fail nil nil environment))))
+  `(prog1
+       (choice-point
+        ,(let ((*nondeterministic-context?* t))
+           (cps-convert-progn body '#'fail nil nil environment)))
+     (unless *nondeterministic?*
+       (setf *pure-cache* nil))))
 
 (defmacro-compile-time one-value (form &optional (default '(fail)))
   "Returns the first nondeterministic value yielded by FORM.
