@@ -34,7 +34,8 @@
            #:local
            #:global
            #:for-effects
-           #:pure
+           #:pure-values
+           #:pure-one-value
            #:multiple-value-call-nondeterministic
            #:possibly?
            #:necessarily?
