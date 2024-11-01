@@ -2800,28 +2800,45 @@ forms")
     ;; (format t "~%post-put cache: ~A" cache)
     value))
 
-;;; TODO: Finish validating the PURE functionality
+;;; TODO: Finish and validate the PURE functionality
 ;;; TODO: Figure out if the name should stay PURE or change to something
 ;;; else.
 ;;; MEMO maybe? Seems like that would conflict with actual memoization
 ;;; packages though...
 ;;; SCREAMER-MEMO or SCREAMER-PURE are verbose, but at least not conflicting?
 ;;;
-(defmacro-compile-time pure (parameters &body body &environment environment)
+(defmacro-compile-time pure-values (parameters &body body &environment environment)
   "Evaluates BODY as an implicit LOCAL form. PARAMETERS is a list of expressions
 whose outputs are treated as unique keys for this form; if a set of parameters has
 been previously encountered within the current instance of nondeterministic context,
-the output from that execution will be retrieved from cache without evaluating BODY."
-  (let ((loc-key (gensym "screamer-pure")))
+the output from that execution will be retrieved from cache without evaluating BODY.
+
+Note that all possible values of BODY are iterated through before PURE-VALUES starts
+emitting return values."
+  (let ((loc-key (gensym "screamer-pure-values")))
     (with-gensyms (param-outputs cache-value)
       `(global
          (let* ((,param-outputs (list ,@parameters))
                 (,cache-value (screamer::cache-pure-retrieve ',loc-key ,param-outputs)))
-           (values-list
+           (a-member-of
             (or ,cache-value
                 (screamer::cache-pure-put ',loc-key
                                           ,param-outputs
-                                          (multiple-value-list (local ,@body))))))))))
+                                          (all-values
+                                            (local
+                                              ,@body))))))))))
+
+(defmacro-compile-time pure-one-value (parameters &body body &environment environment)
+  "Like PURE-VALUES, but only caches/outputs one value from the body, similar to ONE-VALUE"
+  (let ((loc-key (gensym "screamer-pure-one-value")))
+    (with-gensyms (param-outputs cache-value)
+      `(global
+         (let* ((,param-outputs (list ,@parameters))
+                (,cache-value (screamer::cache-pure-retrieve ',loc-key ,param-outputs)))
+           (or ,cache-value
+               (screamer::cache-pure-put ',loc-key
+                                         ,param-outputs
+                                         (local ,@body))))))))
 
 (defmacro-compile-time for-effects (&body body &environment environment)
   "Evaluates BODY as an implicit PROGN in a nondeterministic context and
