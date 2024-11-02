@@ -311,6 +311,7 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
        (not (equal (macroexpand thing env)
                    thing))))
 (defun-compile-time external-macro? (thing &optional env)
+  (declare (ignore env))
   (and (valid-macro? thing)
        (not (member (symbol-package (first thing))
                     '(:screamer)))))
@@ -2764,82 +2765,6 @@ completely transparent to the user."
                #'(lambda (form) (perform-substitutions form environment))
                body))))
 
-(defvar-compile-time *pure-cache* nil
-  "An alist storing cached location-keys and
-corresponding cache hashmaps for `screamer:pure'
-forms")
-
-;;; TODO: Remove prints in the below
-(cl:defun cache-pure-ensure (location-key)
-  ;; (print "ensure")
-  (cdr (or (assoc location-key *pure-cache* :test 'equal)
-           (progn
-             (push (cons location-key (s:dict))
-                   *pure-cache*)
-             (first *pure-cache*)))))
-
-(cl:defun cache-pure-retrieve (location-key parameters)
-  ;; (print "retrieve")
-  (let* ((cache (cache-pure-ensure location-key)))
-    ;; (format t "~%pre-retrieve cache: ~A" cache)
-    ;; (print "hel")
-    ;; (format t "retrieving loc ~A params ~A. output ~A"
-    ;;         location-key
-    ;;         parameters
-    ;;         cache)
-    (gethash parameters cache)))
-
-(cl:defun cache-pure-put (location-key parameters value)
-  (let* ((cache (cache-pure-ensure location-key)))
-    ;; (format t "~%putting loc ~A params ~A value ~A into ~A"
-    ;;         location-key
-    ;;         parameters
-    ;;         value
-    ;;         cache)
-    (setf (gethash parameters cache) value)
-    ;; (format t "~%post-put cache: ~A" cache)
-    value))
-
-;;; TODO: Finish and validate the PURE functionality
-;;; TODO: Figure out if the name should stay PURE or change to something
-;;; else.
-;;; MEMO maybe? Seems like that would conflict with actual memoization
-;;; packages though...
-;;; SCREAMER-MEMO or SCREAMER-PURE are verbose, but at least not conflicting?
-;;;
-(defmacro-compile-time pure-values (parameters &body body &environment environment)
-  "Evaluates BODY as an implicit LOCAL form. PARAMETERS is a list of expressions
-whose outputs are treated as unique keys for this form; if a set of parameters has
-been previously encountered within the current instance of nondeterministic context,
-the output from that execution will be retrieved from cache without evaluating BODY.
-
-Note that all possible values of BODY are iterated through before PURE-VALUES starts
-emitting return values."
-  (let ((loc-key (gensym "screamer-pure-values")))
-    (with-gensyms (param-outputs cache-value)
-      `(global
-         (let* ((,param-outputs (list ,@parameters))
-                (,cache-value (screamer::cache-pure-retrieve ',loc-key ,param-outputs)))
-           (a-member-of
-            (or ,cache-value
-                (screamer::cache-pure-put ',loc-key
-                                          ,param-outputs
-                                          (all-values
-                                            (local
-                                              ,@body))))))))))
-
-(defmacro-compile-time pure-one-value (parameters &body body &environment environment)
-  "Like PURE-VALUES, but only caches/outputs one value from the body, similar to ONE-VALUE"
-  (let ((loc-key (gensym "screamer-pure-one-value")))
-    (with-gensyms (param-outputs cache-value)
-      `(global
-         (let* ((,param-outputs (list ,@parameters))
-                (,cache-value (screamer::cache-pure-retrieve ',loc-key ,param-outputs)))
-           (or ,cache-value
-               (screamer::cache-pure-put ',loc-key
-                                         ,param-outputs
-                                         (local ,@body))))))))
-
 (defmacro-compile-time for-effects (&body body &environment environment)
   "Evaluates BODY as an implicit PROGN in a nondeterministic context and
 returns NIL.
@@ -3195,6 +3120,88 @@ the output."
                             (return-from ith-value value)
                             (decf ,counter))))
          ,default))))
+
+;;; Memoization
+(defvar-compile-time *pure-cache* nil
+  "An alist storing cached location-keys and
+corresponding cache hashmaps for `screamer:pure'
+forms")
+
+;; TODO: Remove prints in the below
+(cl:defun cache-pure-ensure (location-key)
+  ;; (print "ensure")
+  (cdr (or (assoc location-key *pure-cache* :test 'equal)
+           (progn
+             (push (cons location-key (s:dict))
+                   *pure-cache*)
+             (first *pure-cache*)))))
+
+(cl:defun cache-pure-retrieve (location-key parameters)
+  ;; (print "retrieve")
+  (let* ((cache (cache-pure-ensure location-key)))
+    ;; (format t "~%pre-retrieve cache: ~A" cache)
+    ;; (print "hel")
+    ;; (format t "retrieving loc ~A params ~A. output ~A"
+    ;;         location-key
+    ;;         parameters
+    ;;         cache)
+    (gethash parameters cache)))
+
+(cl:defun cache-pure-put (location-key parameters value)
+  (let* ((cache (cache-pure-ensure location-key)))
+    ;; (format t "~%putting loc ~A params ~A value ~A into ~A"
+    ;;         location-key
+    ;;         parameters
+    ;;         value
+    ;;         cache)
+    (setf (gethash parameters cache) value)
+    ;; (format t "~%post-put cache: ~A" cache)
+    value))
+
+;;; TODO: Finish and validate the PURE functionality
+;;; TODO: Figure out if the name should stay PURE or change to something
+;;; else.
+;;; MEMO maybe? Seems like that would conflict with actual memoization
+;;; packages though...
+;;; SCREAMER-MEMO or SCREAMER-PURE are verbose, but at least not conflicting?
+;;;
+(defmacro-compile-time pure-values (parameters &body body &environment environment)
+  "EXPERIMENTAL
+Evaluates BODY as an implicit LOCAL form. PARAMETERS is a list of expressions
+whose outputs are treated as unique keys for this form; if a set of parameters has
+been previously encountered within the current instance of nondeterministic context,
+the output from that execution will be retrieved from cache without evaluating BODY.
+
+Note that all possible values of BODY are iterated through before PURE-VALUES starts
+emitting return values."
+  (declare (ignore environment))
+  (let ((loc-key (gensym "screamer-pure-values")))
+    (with-gensyms (param-outputs cache-value)
+      `(global
+         (let* ((,param-outputs (list ,@parameters))
+                (,cache-value (screamer::cache-pure-retrieve ',loc-key ,param-outputs)))
+           (a-member-of
+            (or ,cache-value
+                (screamer::cache-pure-put ',loc-key
+                                          ,param-outputs
+                                          (all-values
+                                            (local
+                                              ,@body))))))))))
+
+(defmacro-compile-time pure-one-value (parameters &body body &environment environment)
+  "EXPERIMENTAL
+Like PURE-VALUES, but only caches/outputs one value from the body, similar to ONE-VALUE"
+  (declare (ignore environment))
+  (let ((loc-key (gensym "screamer-pure-one-value")))
+    (with-gensyms (param-outputs cache-value)
+      `(global
+         (let* ((,param-outputs (list ,@parameters))
+                (,cache-value (screamer::cache-pure-retrieve ',loc-key ,param-outputs)))
+           (or ,cache-value
+               (screamer::cache-pure-put ',loc-key
+                                         ,param-outputs
+                                         (local ,@body))))))))
+
 
 ;;; In classic Screamer TRAIL is unexported and UNWIND-TRAIL is exported. This
 ;;; doesn't seem very safe or sane: while users could conceivably want to use
