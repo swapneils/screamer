@@ -2764,7 +2764,7 @@ completely transparent to the user."
                #'(lambda (form) (perform-substitutions form environment))
                body))))
 
-(defvar *pure-cache* nil
+(defvar-compile-time *pure-cache* nil
   "An alist storing cached location-keys and
 corresponding cache hashmaps for `screamer:pure'
 forms")
