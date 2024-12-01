@@ -51,7 +51,6 @@
            #:trail-prob
            #:current-probability
            #:factor-prob
-           #:normalized
            #:purge
            #:unwedge-screamer
            #:local-output

@@ -4081,13 +4081,13 @@ Example:
   (trail-prob nil (* (current-probability) p))
   (funcall continuation (current-probability)))
 
-(cl:defun normalized (result-list &key (total nil)
-                      &aux (total (or total
-                                      (reduce #'+
-                                              ;; Filter out malformed results (i.e. not
-                                              ;; a probability-value pair)
-                                              (remove-if-not #'listp result-list)
-                                              :key #'second))))
+(cl:defun normalize-probabilities (result-list &key (total nil)
+                                   &aux (total (or total
+                                                   (reduce #'+
+                                                           ;; Filter out malformed results (i.e. not
+                                                           ;; a probability-value pair)
+                                                           (remove-if-not #'listp result-list)
+                                                           :key #'second))))
   "Normalize a list of lists with form (_ PROBABILITY &rest _).
 
 TOTAL is a number representing the total probability mass. This will be
@@ -4096,7 +4096,7 @@ by the same factor.
 If not provided, it defaults to the sum of the probabilities.
 
 Example:
-(normalized
+(normalize-probabilities
     (all-values-prob
         (if (a-boolean-prob 3/4)
             (a-boolean-prob 1/2)
