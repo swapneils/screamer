@@ -8754,13 +8754,21 @@ This is useful for creating patterns to be unified with other structures."
 ;; properly when one of the values wasn't initially known to be an integer?
 ;; NOTE: This occurs because the sum of the first 4 elements of b is an
 ;; integer without a finite range. We don't track which atoms a variable
-;; is dependent on, so we aren't able to recognize that (+ (+ 1 2 a 4) a)
-;; is the same as (+ 1 2 4 (* 2 a))
+;; is dependent on and what its relationship is to them, so we aren't able
+;; to recognize that (+ (+ 1 2 a 4) a) is the same as (+ 1 2 4 (* 2 a))
 ;; NOTE: How to resolve this? Figure out how to track atoms and use that
 ;; somehow? Do a compilation pass of the variable graph in `solution'
 ;; before trying to actually solve it?
 ;; NOTE: Using flow-cl here would be pretty useful... Organize the
 ;; current state as a standalone library and publish it?
+;; NOTE: I've mitigated this by merging equivalent values in the
+;; arglist of +v, but replacing the second ?a with ?c still causes
+;; this issue
+;; NOTE: I think we're forced to change the integer-bounds specification
+;; framework entirely and implement a compilation pass in `solution' which
+;; identifies unbound but related terms in a tree and merges them into a new
+;; set of potential values
+;; Example:
 ;; (all-values
 ;;      (let* ((b (template '(1 2 ?a 4 ?a)))
 ;;             (c (applyv #'+v b)))
