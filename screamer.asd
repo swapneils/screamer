@@ -75,5 +75,4 @@
   :maintainer "Swapneil Singh"
   :version "5.0.0"
   :depends-on ("screamer-core"
-               "screamer-prob"
-               "screamer-experimental"))
+               "screamer-prob"))
