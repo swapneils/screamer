@@ -51,6 +51,7 @@
            #:with-trail
            #:trail
            #:trail-prob
+           #:collect-trail
            #:current-probability
            #:factor-prob
            #:normalized
@@ -109,6 +110,7 @@
            #:best-value
            #:template
            #:define-screamer-package
+           #:*nondeterministic-context*
            #:*screamer-version*
            #:*dynamic-extent?*
            #:*iscream?*

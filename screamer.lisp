@@ -84,12 +84,22 @@ to DEFPACKAGE, and automatically injects two additional options:
 (defvar-compile-time *iscream?* nil
   "T if Screamer is running under ILisp/GNUEmacs with iscream.el loaded.")
 
-(defvar-compile-time *nondeterministic?* nil "This must be globally NIL.")
+(defvar-compile-time *nondeterministic-context* nil
+  "Context for nondeterministic execution.
+This must be globally NIL.
+
+In nondeterministic forms, this is set to an equal hash-table,
+which can be used to store other information about the
+nondeterministic execution.
+(see for instance `collect-trail')
+
+Nested nondeterministic forms share the same instance of this
+hash-table.")
 
 (defvar-compile-time *screamer?* nil
   "This must be NIL except when defining internal Screamer functions.")
 
-(defvar-compile-time *nondeterministic-context?* nil
+(defvar-compile-time *compiling-nondeterministic-context?* nil
   "This must be globally NIL.")
 
 (defvar-compile-time *local?* nil "This must be globally NIL.")
@@ -223,7 +233,7 @@ in comparison to `cl:mapcar'"
 
 (defmacro-compile-time choice-point-internal (form)
   `(catch '%fail
-     (let ((*nondeterministic?* t))
+     (let ((*nondeterministic-context* (or *nondeterministic-context* (s:dict))))
        (unwind-protect ,form
          (unwind-trail-to trail-pointer)))))
 
@@ -2557,7 +2567,7 @@ contexts even though they may appear inside a SCREAMER::DEFUN.") args))
 
 (defmacro-compile-time defun
     (function-name lambda-list &body body &environment environment)
-  (let ((*nondeterministic-context?* t))
+  (let ((*compiling-nondeterministic-context?* t))
     (check-function-name function-name)
     (let* ((callees (compute-callees body environment))
            (function-record (get-function-record function-name))
@@ -2780,9 +2790,9 @@ always in a nondeterministic context. A FOR-EFFECTS expression is is always
 deterministic."
   `(prog1
        (choice-point
-        ,(let ((*nondeterministic-context?* t))
+        ,(let ((*compiling-nondeterministic-context?* t))
            (cps-convert-progn body '#'fail nil nil environment)))
-     (unless *nondeterministic?*
+     (unless *nondeterministic-context*
        (setf *pure-cache* nil))))
 
 (defmacro-compile-time one-value (form &optional (default '(fail)))
@@ -3218,11 +3228,11 @@ Functions on the trail are called when unwinding from a nondeterministic
 selection (due to either a normal return, or calling FAIL.)"
   ;; NOTE: Is it really better to use VECTOR-PUSH-EXTEND than CONS for the
   ;;       trail?
-  (when *nondeterministic?*
+  (when *nondeterministic-context*
     (vector-push-extend function *trail* 1024))
   function)
 (defun trail-prob (function prob)
-  (when *nondeterministic?*
+  (when *nondeterministic-context*
     (vector-push-extend
      (cond ((and function prob) (list function prob))
            (function function)
@@ -3244,7 +3254,9 @@ selection (due to either a normal return, or calling FAIL.)"
           (let ((fun (pop-trail trail)))
             (when (consp fun)
               (let ((c fun))
+                ;; Complex trail elements always have a function or nil as their first element
                 (setf fun (car fun))
+                ;; A trail element should not be referred to after it is released, so we can reuse the cons
                 (release-cons c)))
             (when (functionp fun)
               (funcall fun)))
@@ -3263,6 +3275,25 @@ eg. undo effects of local assignments -- hence users should never call it. It
 is provided at the moment only for backwards compatibility with classic
 Screamer."
   (unwind-trail-to 0))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declare-nondeterministic 'collect-trail))
+(cl:defun collect-trail ()
+  "EXPERIMENTAL
+Pushes a copy of Screamer's `*trail*' to the `:trail' key of `*nondeterministic-context*'.
+
+Note that this function ignores `local' and `global'; the list of copies will continue
+growing until you exit nondeterministic context.
+
+Functions which process `*trail*' (e.g. `current-probability') can be used to
+extract information from the collected trails."
+  (screamer-error
+   "COLLECT-TRAIL is a nondeterministic function. As such, it must be called only~%~
+   from a nondeterministic context."))
+(cl:defun collect-trail-nondeterministic (continuation)
+  (push (copy-seq *trail*) (gethash :trail *nondeterministic-context*))
+  (funcall continuation))
+
 
 (defun current-probability (&optional (trail *trail*))
   (labels ((zero-one (n)
@@ -3369,7 +3400,7 @@ PRINT-VALUES is analogous to the standard top-level user interface in Prolog."
 
 (defvar-compile-time *fail*
     (lambda ()
-      (if *nondeterministic?*
+      (if *nondeterministic-context*
           (throw '%fail nil)
           (error "Cannot FAIL: no choice-point to backtrack to."))))
 
