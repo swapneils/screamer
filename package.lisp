@@ -34,8 +34,6 @@
            #:local
            #:global
            #:for-effects
-           #:pure-values
-           #:pure-one-value
            #:multiple-value-call-nondeterministic
            #:possibly?
            #:necessarily?
@@ -51,7 +49,6 @@
            #:with-trail
            #:trail
            #:trail-prob
-           #:collect-trail
            #:current-probability
            #:factor-prob
            #:normalized
