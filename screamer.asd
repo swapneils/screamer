@@ -56,18 +56,6 @@
   :components
   ((:file "screamer-prob")))
 
-(defsystem :screamer-experimental
-  :serial t
-  :licence "MIT"
-  :description "Experimental Screamer features"
-  :author "Swapneil Singh"
-  :maintainer "Swapneil Singh"
-  :version "0.0.1"
-  :depends-on ("screamer-core"
-               "screamer-prob")
-  :components
-  ((:file "screamer-experimental")))
-
 (defsystem :screamer
   :licence "MIT"
   :description "Nondeterministic programming and constraint propagation."
@@ -76,3 +64,14 @@
   :version "5.0.0"
   :depends-on ("screamer-core"
                "screamer-prob"))
+
+(defsystem :screamer-experimental
+  :serial t
+  :licence "MIT"
+  :description "Experimental Screamer features"
+  :author "Swapneil Singh"
+  :maintainer "Swapneil Singh"
+  :version "0.0.1"
+  :depends-on ("screamer")
+  :components
+  ((:file "screamer-experimental")))
