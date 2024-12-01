@@ -33,7 +33,7 @@
   :description "The core Screamer functionality"
   :author "Originally Jeffrey Mark Siskind & David Allen McAllester, extended by Swapneil Singh"
   :maintainer "Swapneil Singh"
-  :version "5.0.0"
+  :version "5.1.0"
   :depends-on ("alexandria"
                "serapeum"
                "iterate")
@@ -61,7 +61,7 @@
   :description "Nondeterministic programming and constraint propagation."
   :author "Originally Jeffrey Mark Siskind & David Allen McAllester, extended by Swapneil Singh"
   :maintainer "Swapneil Singh"
-  :version "5.0.0"
+  :version "5.1.0"
   :depends-on ("screamer-core"
                "screamer-prob"))
 

@@ -2998,36 +2998,39 @@ Returns NIL if all branches of BODY fail."
                      (lambda (x) (reduce #'+ x :key #'second))))
     (all-values-prob ,@body)))
 
-(defmacro-compile-time n-values (n form &optional (default-on-failure nil) (default nil))
-  "Returns the first N nondeterministic values yielded by FORM.
+(defmacro-compile-time n-values ((n &key (default nil default-on-failure)) &body body)
+  "Returns the first N nondeterministic values yielded by BODY.
 
-N must be an integer denoting the number of values to return, or a form producing such an integer.
+N must be an integer denoting the number of values to return, or a form
+producing such an integer.
 
-No further execution of FORM is attempted after it successfully yields the
+No further execution of BODY is attempted after it successfully yields the
 desired value.
 
-If FORM fails before yielding the N values to be returned, then DEFAULT is evaluated and its value returned
-instead. DEFAULT defaults to NIL if not present.
+If BODY fails before yielding the N values to be returned, then if DEFAULT is
+provided it is evaluated and its value returned instead. If DEFAULT is not
+specified, the values that were produced so far are returned.
+Note that DEFAULT can be specified as `nil'.
 
-Local side effects performed by FORM are undone when N-VALUES returns, but
-local side effects performed by DEFAULT and by N are not undone when N-VALUES
-returns.
+Local side effects performed by BODY are undone when N-VALUES returns, but
+side effects performed by DEFAULT and N defer to the context outside N-VALUES
+for this behavior.
 
 An N-VALUES expression can appear in both deterministic and nondeterministic
-contexts. Irrespective of what context the N-VALUES appears in, FORM is
+contexts. Irrespective of what context the N-VALUES appears in, BODY is
 always in a nondeterministic context, while DEFAULT and N are in whatever
 context the N-VALUES appears in.
 
 An N-VALUES expression is nondeterministic if DEFAULT is present and is
 nondeterministic, or if N is nondeterministic. Otherwise it is deterministic.
 
-If DEFAULT is present and nondeterministic, and if FORM fails, then it is
+If DEFAULT is present and nondeterministic, and if BODY fails, then it is
 possible to backtrack into the DEFAULT and for the N-VALUES expression to
 nondeterministically return multiple times.
 
 If N is nondeterministic then the N-VALUES expression operates
 nondeterministically on each value of N. In this case, backtracking for each
-value of FORM and DEFAULT is nested in, and restarted for, each backtrack of
+value of BODY and DEFAULT is nested in, and restarted for, each backtrack of
 N."
   (when (numberp n) (assert (and (integerp n) (>= n 0))))
   (let ((counter (gensym "I"))
@@ -3042,7 +3045,7 @@ N."
          (for-effects
            (unless (zerop ,counter)
              (global
-               (let ((,value ,form))
+               (let ((,value (progn ,@body)))
                  (decf ,counter)
                  ;; Add the value to the collected list
                  (if (null ,value-list)
@@ -3054,7 +3057,7 @@ N."
                    (return-from n-values ,value-list))))))
          ,(if default-on-failure default value-list)))))
 
-(defmacro-compile-time n-values-prob (n form &optional (default-on-failure nil) (default nil))
+(defmacro-compile-time n-values-prob ((n &key (default nil default-on-failure)) &body body)
   "Identical to N-VALUES, but returns pairs of values and probabilities.
 See the docstring of `ALL-VALUES-PROB' for more details."
   (when (numberp n) (assert (and (integerp n) (>= n 0))))
@@ -3074,7 +3077,7 @@ See the docstring of `ALL-VALUES-PROB' for more details."
          ;; Process BODY
          (for-effects
            (unless (zerop ,counter)
-             (let* ((,value ,form)
+             (let* ((,value (progn ,@body))
                     (,value (cached-list ,value
                                          (current-probability *trail*))))
                (decf ,counter)
@@ -3092,40 +3095,40 @@ See the docstring of `ALL-VALUES-PROB' for more details."
          (unwind-trail-to ,pointer)
          ,(if default-on-failure default value-list)))))
 
-(defmacro-compile-time ith-value (i form &optional (default '(fail)))
-  "Returns the Ith nondeterministic value yielded by FORM.
+(defmacro-compile-time ith-value ((i &key (default '(fail) default-on-failure)) &body body)
+  "Returns the Ith nondeterministic value yielded by BODY.
 
-I must be an integer. The first nondeterministic value yielded by FORM is
+I must be an integer. The first nondeterministic value yielded by BODY is
 numbered zero, the second one, etc. The Ith value is produced by repeatedly
-evaluating FORM, backtracking through and discarding the first I values and
+evaluating BODY, backtracking through and discarding the first I values and
 deterministically returning the next value produced.
 
-No further execution of FORM is attempted after it successfully yields the
+No further execution of BODY is attempted after it successfully yields the
 desired value.
 
-If FORM fails before yielding both the I values to be discarded, as well as
+If BODY fails before yielding both the I values to be discarded, as well as
 the desired Ith value, then DEFAULT is evaluated and its value returned
 instead. DEFAULT defaults to \(FAIL) if not present.
 
-Local side effects performed by FORM are undone when ITH-VALUE returns, but
+Local side effects performed by BODY are undone when ITH-VALUE returns, but
 local side effects performed by DEFAULT and by I are not undone when ITH-VALUE
 returns.
 
 An ITH-VALUE expression can appear in both deterministic and nondeterministic
-contexts. Irrespective of what context the ITH-VALUE appears in, FORM is
+contexts. Irrespective of what context the ITH-VALUE appears in, BODY is
 always in a nondeterministic context, while DEFAULT and I are in whatever
 context the ITH-VALUE appears in.
 
 An ITH-VALUE expression is nondeterministic if DEFAULT is present and is
 nondeterministic, or if I is nondeterministic. Otherwise it is deterministic.
 
-If DEFAULT is present and nondeterministic, and if FORM fails, then it is
+If DEFAULT is present and nondeterministic, and if BODY fails, then it is
 possible to backtrack into the DEFAULT and for the ITH-VALUE expression to
 nondeterministically return multiple times.
 
 If I is nondeterministic then the ITH-VALUE expression operates
 nondeterministically on each value of I. In this case, backtracking for each
-value of FORM and DEFAULT is nested in, and restarted for, each backtrack of
+value of BODY and DEFAULT is nested in, and restarted for, each backtrack of
 I.
 
 Note that ITH-VALUE does not collect the results it encounters, and so cannot
@@ -3135,11 +3138,11 @@ the output."
   (let ((counter (gensym "I")))
     `(block ith-value
        (let ((,counter (value-of ,i)))
-         (for-effects (let ((value ,form))
+         (for-effects (let ((value (progn ,@body)))
                         (if (zerop ,counter)
                             (return-from ith-value value)
                             (decf ,counter))))
-         ,default))))
+         (when ,default-on-failure ,default)))))
 
 ;;; Memoization
 (defvar-compile-time *pure-cache* nil
@@ -7065,6 +7068,9 @@ more than two arguments, behaves as nested sequence of two-argument calls:
 
   \(+V X1 X2 ... Xn) = \(+V X1 (+V X2 (+V ...)))
 
+If any arguments are `eql' to each other, they are merged into a single
+`*v' form  to reduce the chance of an infinite search in `solution'.
+
 When called with two arguments, if both arguments are bound, returns the sum
 of their values. If either argument is known to be zero, returns the value of
 the remaining argument. Otherwise returns number variable V.
@@ -7088,6 +7094,7 @@ argument equals zero."
   (let* ((uniques (remove-duplicates xs))
          (counts (mapcar (rcurry #'count xs) uniques))
          (new-xs nil))
+    (declare (dynamic-extent uniques counts))
     (dotimes (i (length uniques))
       (let ((c (nth i counts))
             (x (nth i uniques)))
