@@ -27,10 +27,10 @@
 ;;;; IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 ;;;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-(defsystem :screamer
+(defsystem :screamer-core
   :serial t
   :licence "MIT"
-  :description "Nondeterministic programming and constraint propagation."
+  :description "The core Screamer functionality"
   :author "Originally Jeffrey Mark Siskind & David Allen McAllester, extended by Swapneil Singh"
   :maintainer "Swapneil Singh"
   :version "5.0.0"
@@ -41,6 +41,39 @@
   ((:file "package")
    (:file "screamer")))
 
-(defmethod perform ((o test-op) (c (eql (find-system :screamer))))
+(defmethod perform ((o test-op) (c (eql (find-system :screamer-core))))
   (load-system :screamer-tests)
   (funcall (intern (string '#:test-screamer) :screamer-tests)))
+
+(defsystem :screamer-prob
+  :serial t
+  :licence "MIT"
+  :description "Probabilistic reasoning for Screamer."
+  :author "Swapneil Singh"
+  :maintainer "Swapneil Singh"
+  :version "0.1.0"
+  :depends-on ("screamer-core")
+  :components
+  ((:file "screamer-prob")))
+
+(defsystem :screamer-experimental
+  :serial t
+  :licence "MIT"
+  :description "Experimental Screamer features"
+  :author "Swapneil Singh"
+  :maintainer "Swapneil Singh"
+  :version "0.0.1"
+  :depends-on ("screamer-core"
+               "screamer-prob")
+  :components
+  ((:file "screamer-experimental")))
+
+(defsystem :screamer
+  :licence "MIT"
+  :description "Nondeterministic programming and constraint propagation."
+  :author "Originally Jeffrey Mark Siskind & David Allen McAllester, extended by Swapneil Singh"
+  :maintainer "Swapneil Singh"
+  :version "5.0.0"
+  :depends-on ("screamer-core"
+               "screamer-prob"
+               "screamer-experimental"))
