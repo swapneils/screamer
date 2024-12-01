@@ -4181,6 +4181,8 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
                                   (:constructor make-variable-internal))
   name
   (noticers nil :type list)
+  (operation nil :type (or symbol null))
+  (dependencies nil :type list)
   (enumerated-domain t :type (or boolean list))
   (enumerated-antidomain nil :type (or boolean list))
   value
@@ -4196,6 +4198,8 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
 (defclass variable ()
   ((name :accessor variable-name :initarg :name)
    (noticers :accessor variable-noticers :initform nil)
+   (operation :accessor variable-operation :initform nil)
+   (dependencies :accessor variable-dependencies :initform nil)
    (enumerated-domain :accessor variable-enumerated-domain :initform t)
    (enumerated-antidomain :accessor variable-enumerated-antidomain
                           :initform nil)
@@ -4450,6 +4454,14 @@ Otherwise returns the value of X."
     ((consp value) (or (occurs-in? x (car value)) (occurs-in? x (cdr value))))
     (t nil)))
 
+(defun attach-dependencies!-internal (dependencies x)
+  (when (variable? x)
+    (dolist (dep dependencies)
+      (if (eql dep x)
+          (screamer-error "~A cannot depend on itself!" x)
+          (when (variable? dep)
+            (pushnew dep (variable-dependencies x)))))))
+
 (defun attach-noticer!-internal (noticer x)
   ;; NOTE: Will loop if X is circular.
   (s:nest
@@ -4467,9 +4479,14 @@ Otherwise returns the value of X."
                       (cached-cons noticer (variable-noticers x)))))
        (attach-noticer!-internal noticer (variable-value x)))))
 
-(defun attach-noticer! (noticer x)
-  (attach-noticer!-internal noticer x)
-  (funcall noticer))
+(defun attach-noticer! (noticer x &key dependencies)
+  ;; Track dependency variables if provided
+  (when dependencies
+    (attach-dependencies!-internal dependencies x))
+
+  (when noticer
+    (attach-noticer!-internal noticer x)
+    (funcall noticer)))
 
 (defun run-noticers (x)
   (dolist (noticer (variable-noticers x)) (funcall noticer)))
@@ -5615,7 +5632,8 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (+-rule-up z x y) (+-rule-down z x y)) y)
              (attach-noticer!
-              #'(lambda () (+-rule-down z x y) (+-rule-down z y x)) z)
+              #'(lambda () (+-rule-down z x y) (+-rule-down z y x)) z
+              :dependencies (list x y))
              z))))
 
 (defun -v2 (x y)
@@ -5633,7 +5651,8 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (+-rule-up x y z) (+-rule-down x z y)) y)
              (attach-noticer!
-              #'(lambda () (+-rule-up x y z) (+-rule-down x y z)) z)
+              #'(lambda () (+-rule-up x y z) (+-rule-down x y z)) z
+              :dependencies (list x y))
              z))))
 
 (defun *v2 (x y)
@@ -5654,7 +5673,8 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (*-rule-up z x y) (*-rule-down z x y)) y)
              (attach-noticer!
-              #'(lambda () (*-rule-down z x y) (*-rule-down z y x)) z)
+              #'(lambda () (*-rule-down z x y) (*-rule-down z y x)) z
+              :dependencies (list x y))
              z))))
 
 (defun /v2 (x y)
@@ -5690,7 +5710,8 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (min-rule-up z x y) (min-rule-down z x y)) y)
              (attach-noticer!
-              #'(lambda () (min-rule-down z x y) (min-rule-down z y x)) z)
+              #'(lambda () (min-rule-down z x y) (min-rule-down z y x)) z
+              :dependencies (list x y))
              z))))
 
 (defun maxv2 (x y)
@@ -6346,7 +6367,8 @@ boolean."
                 #'(lambda ()
                     (cond ((variable-true? z) (restrict-false! x))
                           ((variable-false? z) (restrict-true! x))))
-                z)
+                z
+                :dependencies (list x))
                z)))))
 
 (defun andv-internal (xs)
@@ -6360,7 +6382,7 @@ boolean."
             ((zerop count) t)
             ((= count 1) (first xs))
             (t (let ((z (a-booleanv)))
-                 (attach-noticer!-internal
+                 (attach-noticer!
                   #'(lambda ()
                       (cond ((variable-true? z) (dolist (x xs) (restrict-true! x)))
                             ((and (= count 1) (variable-false? z))
@@ -6369,7 +6391,7 @@ boolean."
                   z)
                  (dolist (x xs)
                    (let ((x x))
-                     (attach-noticer!-internal
+                     (attach-noticer!
                       #'(lambda ()
                           (cond ((variable-false? x) (restrict-false! z))
                                 ((variable-true? x)
@@ -6440,7 +6462,7 @@ arguments. Secondly, any non-boolean argument causes it to fail."
             ((zerop count) nil)
             ((= count 1) (first xs))
             (t (let ((z (a-booleanv)))
-                 (attach-noticer!-internal
+                 (attach-noticer!
                   #'(lambda ()
                       (cond ((variable-false? z)
                              (dolist (x xs) (restrict-false! x)))
@@ -6450,7 +6472,7 @@ arguments. Secondly, any non-boolean argument causes it to fail."
                   z)
                  (dolist (x xs)
                    (let ((x x))
-                     (attach-noticer!-internal
+                     (attach-noticer!
                       #'(lambda ()
                           (cond ((variable-true? x) (restrict-true! z))
                                 ((variable-false? x)
@@ -6593,7 +6615,8 @@ arguments. Secondly, any non-boolean argument causes it to fail."
                (if (= lower (variable-upper-bound z))
                    (dolist (x xs)
                      (unless (variable-true? x) (restrict-false! x)))))
-           z)
+           z
+           :dependencies xs)
           (dolist (x xs)
             (let ((x x))
               (attach-noticer!
@@ -6667,6 +6690,28 @@ functions."
   (funcall-nondeterministic
    (value-of ordering-force-function) (variables-in (value-of arguments)))
   (apply-substitution arguments))
+
+(cl:defun get-variable-dependency-closure (variables)
+  (setf variables (remove-duplicates variables))
+  (let ((new-vars nil))
+    ;; NOTE: This is a kludge to avoid `loop', which
+    ;; some compilers expand to MACROLETs
+    (do* ((curr-vars variables new-vars)
+          ;; Get the dependencies of curr-vars
+          (deps (mapcan (lambda (v)
+                          ;; Collect the dependencies
+                          (if (variable? v)
+                              (variable-dependencies v)
+                              nil))
+                        curr-vars)))
+         ;; When there are no variables to get dependencies of, leave
+         ((not curr-vars) variables)
+      ;; Filter out dependencies that are already tracked
+      ;; NOTE: Kludged this out of
+      (setf new-vars (set-difference deps variables))
+      ;; Add each layer of dependencies to the start of the variable list
+      (setf variables (concatenate 'list new-vars variables))))
+  variables)
 
 (defun linear-force (x)
   "Returns X if it is not a variable. If X is a bound variable then returns
@@ -6745,7 +6790,10 @@ may provide additional ones. \(The defined Screamer protocol does not provide
 sufficient hooks for the user to define her own force functions.)"
   ;; NOTE: This closure will heap cons.
   (let ((force-function (value-of force-function)))
-    #'(lambda (variables) (static-ordering-internal variables force-function))))
+    #'(lambda (variables)
+        (setf variables (get-variable-dependency-closure variables))
+        ;; Force the dependencies and then the target variables
+        (static-ordering-internal variables force-function))))
 
 (defun known?-constraint (f polarity? x)
   (let ((f (value-of f)))
@@ -6978,9 +7026,16 @@ restricted to be consistent with other arguments."
     (unless (functionp f)
       (error "The first argument to APPLYV must be a deterministic function"))
     (let ((arguments (arguments-for-applyv x xs)))
-      (if (every #'bound? arguments)
+      (if (or
+           ;; All arguments are bound
+           (every #'bound? arguments)
+           ;; TODO: Figure out how to mark functions as able to handle variable arguments
+           ;; Hardcoded example condition:
+           ;; (member f (list '+v #'+v))
+           )
           (apply f (mapcar #'value-of arguments))
           (let ((z (make-variable)))
+            (attach-noticer! nil z :dependencies arguments)
             (assert!-constraint
              #'(lambda (&rest x) (equal (first x) (apply f (rest x))))
              t
@@ -6988,9 +7043,10 @@ restricted to be consistent with other arguments."
             (dolist (argument arguments)
               (attach-noticer!
                #'(lambda ()
-                   (if (every #'bound? arguments)
+                   (when (every #'bound? arguments)
                        (assert!-equalv z (apply f (mapcar #'value-of arguments)))))
-               argument))
+               argument
+               :dependencies (list z)))
             z)))))
 
 ;;; Lifted Arithmetic Functions
@@ -8607,6 +8663,7 @@ sufficient hooks for the user to define her own force functions.)"
         (order (value-of order))
         (force-function (value-of force-function)))
     #'(lambda (variables)
+        (setf variables (get-variable-dependency-closure variables))
         (reorder-internal
          variables cost-function terminate? order force-function))))
 
