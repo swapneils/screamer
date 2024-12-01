@@ -3,4 +3,5 @@
 (export '(collect-trail
           pure-values
           pure-one-value
-          normalize-probabilities))
+          normalize-probabilities
+          factor-prob))
