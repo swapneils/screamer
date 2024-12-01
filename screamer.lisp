@@ -81,6 +81,16 @@ to DEFPACKAGE, and automatically injects two additional options:
 (defparameter-compile-time *screamer-version* (asdf:component-version (asdf:find-system :screamer))
   "The version of Screamer which is loaded.")
 
+(defvar-compile-time *dynamic-extent?* t
+  "DEPRECATED: Currently has no effect.
+
+Previously controlled the use of dynamic-extent declarations
+in `possibly-beta-reduce-funcall'.
+
+Prior description:
+Set to T to enable the dynamic extent optimization, NIL to
+disable it. Default is platform dependent.")
+
 (defvar-compile-time *iscream?* nil
   "T if Screamer is running under ILisp/GNUEmacs with iscream.el loaded.")
 
