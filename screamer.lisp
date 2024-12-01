@@ -4031,6 +4031,58 @@ TIMES must be a non-negative integer."
    (progn (trail-prob nil (* (current-probability) (second next)))
           (funcall continuation (first next)))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declare-nondeterministic 'factor-prob))
+(cl:defun factor-prob (p)
+  "Multiply the current Screamer probability by P for the rest of this nondeterministic path.
+The current probability is determined by `current-probability'.
+
+Returns the new probability.
+
+Example:
+(all-values-prob (if (a-boolean-prob 3/4) (progn (factor-prob (/ 1 (current-probability))) (a-boolean-prob 1/2)) (fail)))
+=> ((T 1/2) (NIL 1/2))"
+  (declare (ignore p))
+  (screamer-error
+   "FACTOR-PROB is a nondeterministic function. As such, it must be called only~%~
+   from a nondeterministic context."))
+(cl:defun factor-prob-nondeterministic (continuation p)
+  (trail-prob nil (* (current-probability) p))
+  (funcall continuation (current-probability)))
+
+(cl:defun normalized (result-list &key (total nil)
+                      &aux (total (or total
+                                      (reduce #'+
+                                              ;; Filter out malformed results (i.e. not
+                                              ;; a probability-value pair)
+                                              (remove-if-not #'listp result-list)
+                                              :key #'second))))
+  "Normalize a list of lists with form (_ PROBABILITY &rest _).
+
+TOTAL is a number representing the total probability mass. This will be
+treated as 1 post-normalization, with the individual probabilities multiplied
+by the same factor.
+If not provided, it defaults to the sum of the probabilities.
+
+Example:
+(normalized
+    (all-values-prob
+        (if (a-boolean-prob 3/4)
+            (a-boolean-prob 1/2)
+          (progn (factor-prob 2)
+                 (a-boolean-prob 1/2)))))
+
+=> ((T 3/10) (NIL 3/10) (T 1/5) (NIL 1/5))"
+  (mapcar (lambda (result)
+            ;; Generate a copy of each result to avoid
+            ;; mutating the input
+            (let ((new-result (copy-list result)))
+              ;; Divide the probabilities by their sum to normalize
+              (s:callf (rcurry #'/ total)
+                       (second new-result))
+              new-result))
+          result-list))
+
 ;;; NOTE: The following two functions work only when Screamer is running under
 ;;;       ILisp/GNUEmacs with iscream.el loaded.
 
