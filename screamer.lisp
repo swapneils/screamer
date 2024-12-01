@@ -3676,13 +3676,6 @@ integers. Fails if the interval does not contain any integers."
       (progn (trail-prob nil (* (current-probability) prob-avg))
              (funcall continuation high)))))
 
-(defmacro let-integers-betweenv (((min max) var-list) &rest body)
-  "Defines multiple logic variables with numerical values between min and max (in the same manner as with an-integer-betweenv).
-Duplicate variable names will be ignored."
-  `(let ,(loop for i in (remove-duplicates var-list)
-               collect (list i `(an-integer-betweenv ,min ,max)))
-     ,@body))
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'a-member-of))
 
@@ -8329,6 +8322,13 @@ The expression \(AN-INTEGER-BETWEENV LOW HIGH) is an abbreviation for:
   (let ((v (if name? (make-variable name) (make-variable))))
     (assert! (andv (integerpv v) (>=v v low) (<=v v high)))
     (value-of v)))
+
+(defmacro let-integers-betweenv (((min max) var-list) &rest body)
+  "Defines multiple logic variables with numerical values between min and max (in the same manner as with an-integer-betweenv).
+Duplicate variable names will be ignored."
+  `(let ,(loop for i in (remove-duplicates var-list)
+               collect (list i `(an-integer-betweenv ,min ,max)))
+     ,@body))
 
 (defun a-realv (&optional (name nil name?))
   "Returns a real variable."
