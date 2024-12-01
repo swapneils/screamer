@@ -19,7 +19,7 @@
   (loop for i below count
         collect (an-integer-betweenv min max)))
 
-(defun all-differentv (x &rest xs)
+(defun unapplied-all-differentv (x &rest xs)
   ;; Functionally the same as (apply #'/=v list), but faster.
   (labels ((all-different (x xs)
              (if (null xs)
@@ -112,7 +112,7 @@
                             (columns vars)
                             (boxes vars))
                vars)
-        (assert! (apply 'all-differentv list)))
+        (assert! (apply 'unapplied-all-differentv list)))
       (reorder #'domain-size
                #'(lambda (x) (declare (ignore x)) nil)
                #'<
