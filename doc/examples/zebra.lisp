@@ -34,27 +34,6 @@
 (in-package :screamer-user)
 
 ;;;; Utility definitions
-;;;;
-;;;; LET-INTEGERS-BETWEENV binds names in VAR-LIST to integer
-;;;; variables constrained in the range [min, max].
-;;;;
-;;;; ALL-DIFFERENTV returns a variable constrained to be true if variables in
-;;;; the list received all have different values.
-
-(defmacro let-integers-betweenv (((min max) var-list) body)
-  `(let ,(loop for i in var-list
-               collect (list i `(an-integer-betweenv ,min ,max)))
-     ,body))
-
-(defun all-differentv (list)
-  ;; Functionally the same as (apply #'/=v list), but faster.
-  (labels ((all-different (x xs)
-             (if (null xs)
-                 t
-                 (andv (notv (=v x (car xs)))
-                       (all-different x (cdr xs))
-                       (all-different (car xs) (cdr xs))))))
-    (all-different (car list) (cdr list))))
 
 ;;;; Constraint model
 ;;;;
