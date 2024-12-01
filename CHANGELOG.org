@@ -1,0 +1,26 @@
+#+title: Changelog
+
+* 5.1.1 (screamer-prob v0.0.2)
+- Minor incompatible changes to ~sample~ function signature
+- Added ~sample-once~ as a means of sampling without any impact to backtracking
+* 5.1.0 (screamer-core v5.1.0)
+- Incompatible API change to ~n-values~ and ~ith-value~, enclosing the configuration at the
+  beginning of the form. This allows you to run multiple forms within the body of these
+  constructs, and permits extending the construct with more configurations later on.
+* 5.0.0
+Extension of the library to support probabilistic programming, as well as
+some more utility functions.
+
+Fixes for some scenarios that previously led to incorrect results or infinite
+searches.
+
+Some new utility functions (e.g. ~with-trail~).
+
+Significant refactoring and some memory-oriented optimizations.
+* 4.0.0
+Publicly maintained version of Screamer under MIT license. Kudos to @nikodemus
+for his efforts in maintaining and documenting the library.
+
+See the ~4_0~ files in ~/docs~ for more info about this version.
+* 3.20
+Last version of the original Screamer
