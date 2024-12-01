@@ -48,7 +48,6 @@
            #:unwind-trail
            #:with-trail
            #:trail
-           #:trail-prob
            #:current-probability
            #:purge
            #:unwedge-screamer
