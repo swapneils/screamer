@@ -5256,33 +5256,40 @@ Otherwise returns the value of X."
 ;;; Rules
 
 (defun +-rule-up (z x y)
-  (if (and (variable-integer? x) (variable-integer? y)) (restrict-integer! z))
+  (when (and (variable-integer? x) (variable-integer? y)) (restrict-integer! z))
   ;; NOTE: We can't assert that Z in not an integer when either X or Y are not
   ;;       integers since they may be Gaussian integers. But we can if either
   ;;       X or Y is real. If the Screamer type system could distinguish
   ;;       Gaussian integers from other complex numbers we could whenever X or
   ;;       Y was not a Gaussian integer.
-  (if (and (or (variable-noninteger? x) (variable-noninteger? y))
+  (when (and (or (variable-noninteger? x) (variable-noninteger? y))
            (or (variable-real? x) (variable-real? y)))
       (restrict-noninteger! z))
-  (if (and (variable-real? x) (variable-real? y)) (restrict-real! z))
+  (when (and (variable-real? x) (variable-real? y)) (restrict-real! z))
   ;; NOTE: Ditto.
-  (if (and (or (variable-nonreal? x) (variable-nonreal? y))
+  (when (and (or (variable-nonreal? x) (variable-nonreal? y))
            (or (variable-real? x) (variable-real? y)))
       (restrict-nonreal! z))
-  (if (and (variable-real? x) (variable-real? y) (variable-real? z))
+  (when (and (variable-real? x) (variable-real? y) (variable-real? z))
+    (let ((old-bounds (list (variable-lower-bound z)
+                            (variable-upper-bound z))))
       (restrict-bounds!
        z
        (infinity-+ (variable-lower-bound x) (variable-lower-bound y))
-       (infinity-+ (variable-upper-bound x) (variable-upper-bound y))))
+       (infinity-+ (variable-upper-bound x) (variable-upper-bound y)))
+      ;; Propagate new bounds
+      (unless (equal old-bounds
+                     (list (variable-lower-bound z)
+                           (variable-upper-bound z)))
+        (run-noticers z))))
   (let ((x (value-of x))
         (y (value-of y))
         (z (value-of z)))
-    (if (and (not (variable? x))
-             (not (variable? y))
-             (not (variable? z))
-             (/= z (+ x y)))
-        (fail))))
+    (when (and (not (variable? x))
+               (not (variable? y))
+               (not (variable? z))
+               (/= z (+ x y)))
+      (fail))))
 
 (defun +-rule-down (z x y)
   ;; NOTE: We can't assert that X and Y are integers when Z is an integer since
@@ -5291,16 +5298,23 @@ Otherwise returns the value of X."
   ;;       type system could distinguish Gaussian integers from other complex
   ;;       numbers we could make such an assertion whenever either X or Y was
   ;;       not a Gaussian integer.
-  (if (and (variable-integer? z) (or (variable-integer? x) (variable-integer? y)))
+  (when (and (variable-integer? z) (or (variable-integer? x) (variable-integer? y)))
       (restrict-integer! x))
   ;; NOTE: Ditto.
-  (if (and (variable-real? z) (or (variable-real? x) (variable-real? y)))
+  (when (and (variable-real? z) (or (variable-real? x) (variable-real? y)))
       (restrict-real! x))
-  (if (and (variable-real? x) (variable-real? y) (variable-real? z))
+  (when (and (variable-real? x) (variable-real? y) (variable-real? z))
+    (let ((old-bounds (list (variable-lower-bound x)
+                            (variable-upper-bound x))))
       (restrict-bounds!
        x
        (infinity-- (variable-lower-bound z) (variable-upper-bound y))
-       (infinity-- (variable-upper-bound z) (variable-lower-bound y))))
+       (infinity-- (variable-upper-bound z) (variable-lower-bound y)))
+      ;; Propagate new bounds
+      (unless (equal old-bounds
+                     (list (variable-lower-bound x)
+                           (variable-upper-bound x)))
+        (run-noticers x))))
   (let ((x (value-of x))
         (y (value-of y))
         (z (value-of z)))
@@ -6682,27 +6696,27 @@ The order in which the nondeterministic alternatives are tried is left
 unspecified to give future implementations leeway in incorporating heuristics
 in the process of determining a good search order."
   (let ((variable (value-of x)))
-    (if (variable? variable)
-        (restrict-value!
-         variable
-         (cond ((not (eq (variable-enumerated-domain variable) t))
-                (a-member-of (variable-enumerated-domain variable)))
-               ((variable-integer? variable)
-                (if (variable-lower-bound variable)
-                    (if (variable-upper-bound variable)
-                        (an-integer-between
-                         (variable-lower-bound variable)
-                         (variable-upper-bound variable))
-                        (an-integer-above (variable-lower-bound variable)))
-                    (if (variable-upper-bound variable)
-                        (an-integer-below (variable-upper-bound variable))
-                        (an-integer))))
-               (t (error "It is only possible to linear force a variable that~%~
+    (when (variable? variable)
+      (restrict-value!
+       variable
+       (cond ((not (eq (variable-enumerated-domain variable) t))
+              (a-member-of (variable-enumerated-domain variable)))
+             ((variable-integer? variable)
+              (if (variable-lower-bound variable)
+                  (if (variable-upper-bound variable)
+                      (an-integer-between
+                       (variable-lower-bound variable)
+                       (variable-upper-bound variable))
+                      (an-integer-above (variable-lower-bound variable)))
+                  (if (variable-upper-bound variable)
+                      (an-integer-below (variable-upper-bound variable))
+                      (an-integer))))
+             (t (error "It is only possible to linear force a variable that~%~
                         has a countable domain"))))))
   (value-of variable))
 
 (defun static-ordering-internal (variables force-function)
-  (if variables
+  (when variables
       (let ((variable (value-of (first variables))))
         (cond ((variable? variable)
                (funcall-nondeterministic force-function variable)
@@ -6982,7 +6996,11 @@ restricted to be consistent with other arguments."
 ;;; Lifted Arithmetic Functions
 
 (defun +v-internal (xs)
-  (if (null xs) 0 (+v2 (first xs) (+v-internal (rest xs)))))
+  (cond ((null xs) 0)
+        ((= 1 (length xs))
+         (assert!-numberpv (first xs))
+         (first xs))
+        (t (+v2 (first xs) (+v-internal (rest xs))))))
 
 (defun +v (&rest xs)
   "Constrains its arguments to be numbers. Returns 0 if called with no
@@ -7011,7 +7029,14 @@ the remaining argument. Otherwise returns number variable V.
 
 Note: Numeric contagion rules of Common Lisp are not applied if either
 argument equals zero."
-  (+v-internal xs))
+  (let* ((uniques (remove-duplicates xs))
+         (counts (mapcar (rcurry #'count xs) uniques))
+         (new-xs nil))
+    (dotimes (i (length uniques))
+      (let ((c (nth i counts))
+            (x (nth i uniques)))
+        (push (*v x c) new-xs)))
+    (+v-internal new-xs)))
 
 (defun -v-internal (x xs)
   (if (null xs) x (-v-internal (-v2 x (first xs)) (rest xs))))
