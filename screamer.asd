@@ -51,7 +51,7 @@
   :description "Probabilistic reasoning for Screamer."
   :author "Swapneil Singh"
   :maintainer "Swapneil Singh"
-  :version "0.1.0"
+  :version "0.0.2"
   :depends-on ("screamer-core")
   :components
   ((:file "screamer-prob")))
@@ -61,7 +61,7 @@
   :description "Nondeterministic programming and constraint propagation."
   :author "Originally Jeffrey Mark Siskind & David Allen McAllester, extended by Swapneil Singh"
   :maintainer "Swapneil Singh"
-  :version "5.1.0"
+  :version "5.1.1"
   :depends-on ("screamer-core"
                "screamer-prob"))
 

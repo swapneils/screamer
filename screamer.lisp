@@ -3323,6 +3323,58 @@ extract information from the collected trails."
                  :key #'get-trail-prob)
         1)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declare-nondeterministic 'factor-prob))
+(cl:defun factor-prob (p)
+  "Multiply the current Screamer probability by P for the rest of this nondeterministic path.
+The current probability is determined by `current-probability'.
+
+Returns the new probability.
+
+Example:
+(all-values-prob (if (a-boolean-prob 3/4) (progn (factor-prob (/ 1 (current-probability))) (a-boolean-prob 1/2)) (fail)))
+=> ((T 1/2) (NIL 1/2))"
+  (declare (ignore p))
+  (screamer-error
+   "FACTOR-PROB is a nondeterministic function. As such, it must be called only~%~
+   from a nondeterministic context."))
+(cl:defun factor-prob-nondeterministic (continuation p)
+  (trail-prob nil (* (current-probability) p))
+  (funcall continuation (current-probability)))
+
+(cl:defun normalize-probabilities (result-list &key (total nil)
+                                   &aux (total (or total
+                                                   (reduce #'+
+                                                           ;; Filter out malformed results (i.e. not
+                                                           ;; a probability-value pair)
+                                                           (remove-if-not #'listp result-list)
+                                                           :key #'second))))
+  "Normalize a list of lists with form (_ PROBABILITY &rest _).
+
+TOTAL is a number representing the total probability mass. This will be
+treated as 1 post-normalization, with the individual probabilities multiplied
+by the same factor.
+If not provided, it defaults to the sum of the probabilities.
+
+Example:
+(normalize-probabilities
+    (all-values-prob
+        (if (a-boolean-prob 3/4)
+            (a-boolean-prob 1/2)
+          (progn (factor-prob 2)
+                 (a-boolean-prob 1/2)))))
+
+=> ((T 3/10) (NIL 3/10) (T 1/5) (NIL 1/5))"
+  (mapcar (lambda (result)
+            ;; Generate a copy of each result to avoid
+            ;; mutating the input
+            (let ((new-result (copy-list result)))
+              ;; Divide the probabilities by their sum to normalize
+              (s:callf (rcurry #'/ total)
+                       (second new-result))
+              new-result))
+          result-list))
+
 (defun y-or-n-p
     (&optional (format-string nil format-string?) &rest format-args)
   (cond
@@ -3756,7 +3808,7 @@ either a list or a vector."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'sample))
 
-(cl:defun sample (source &optional (count nil))
+(cl:defun sample (source &key count)
   "Continuously samples random values from SOURCE.
 
 If SOURCE is a list, it is a plist where the keys are possible
@@ -3787,7 +3839,7 @@ similar form."
    "SAMPLE is a nondeterministic function. As such, it must be~%~
    called only from a nondeterministic context."))
 
-(cl:defun sample-nondeterministic (continuation source &optional count)
+(cl:defun sample-nondeterministic (continuation source &key count)
   (s:nest
    (flet ((normalize (d psum)
             ;; Normalize a list-distribution given the sum
@@ -3854,13 +3906,23 @@ similar form."
        (choice-point-external)
        (loop)
        (choice-point-internal)
+       (let ((ret (sample-internal source))))
        (call-continuation continuation)
-       (sample-internal source))))))
+       ret)))))
+
+(defun sample-once (source &key count)
+  "Like `sample', but does not create a choice point, meaning it is
+not backtracked to and does not block backtracking to earlier choice
+points."
+  (let ((result (first (n-values-prob (1) (sample source :count count)))))
+    (unless result (fail))
+    (factor-prob (second result))
+    (first result)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'sample-optimizing))
 
-(cl:defun sample-optimizing (source &optional (stop nil stop-supplied) (test 'eql))
+(cl:defun sample-optimizing (source &key (stop nil stop-supplied) (test 'eql))
   "Continuously samples values from SOURCE.
 
 SOURCE must be a function which takes as input a list of prior outputs
@@ -3886,7 +3948,7 @@ an output."
    "SAMPLE-OPTIMIZING is a nondeterministic function. As such, it must be~%~
    called only from a nondeterministic context."))
 
-(cl:defun sample-optimizing-nondeterministic (continuation source &optional (stop nil stop-supplied) (test 'eql))
+(cl:defun sample-optimizing-nondeterministic (continuation source &key (stop nil stop-supplied) (test 'eql))
   (s:nest
    (flet ((ensure-prob-list (e)
             (typecase e
@@ -3897,9 +3959,7 @@ an output."
             ;; (print "sample-start")
             ;; (format t "~%current results: ~A" *screamer-results*)
             (let ((ans (s:nest
-
                         (mapcar #'ensure-prob-list)
-                        (print)
                         (funcall source *screamer-results*))))
               ;; (format t "~%output of sample: ~A" ans)
               ans))
@@ -3979,7 +4039,7 @@ TIMES must be a non-negative integer."
                      (cached-list state (cached-list state 1))))
                 (function
                  (cached-cons state (funcall machine state)))))))
-   ;; For alist state-machines, check that all transition-probability sets sum to 1
+   ;; For alist state-machines, fail unless all transition-probability sets sum to 1
    (if (and alist-machine
             (some (s:nest
                    (lambda (state-spec))
@@ -4068,57 +4128,6 @@ TIMES must be a non-negative integer."
    (progn (trail-prob nil (* (current-probability) (second next)))
           (funcall continuation (first next)))))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declare-nondeterministic 'factor-prob))
-(cl:defun factor-prob (p)
-  "Multiply the current Screamer probability by P for the rest of this nondeterministic path.
-The current probability is determined by `current-probability'.
-
-Returns the new probability.
-
-Example:
-(all-values-prob (if (a-boolean-prob 3/4) (progn (factor-prob (/ 1 (current-probability))) (a-boolean-prob 1/2)) (fail)))
-=> ((T 1/2) (NIL 1/2))"
-  (declare (ignore p))
-  (screamer-error
-   "FACTOR-PROB is a nondeterministic function. As such, it must be called only~%~
-   from a nondeterministic context."))
-(cl:defun factor-prob-nondeterministic (continuation p)
-  (trail-prob nil (* (current-probability) p))
-  (funcall continuation (current-probability)))
-
-(cl:defun normalize-probabilities (result-list &key (total nil)
-                                   &aux (total (or total
-                                                   (reduce #'+
-                                                           ;; Filter out malformed results (i.e. not
-                                                           ;; a probability-value pair)
-                                                           (remove-if-not #'listp result-list)
-                                                           :key #'second))))
-  "Normalize a list of lists with form (_ PROBABILITY &rest _).
-
-TOTAL is a number representing the total probability mass. This will be
-treated as 1 post-normalization, with the individual probabilities multiplied
-by the same factor.
-If not provided, it defaults to the sum of the probabilities.
-
-Example:
-(normalize-probabilities
-    (all-values-prob
-        (if (a-boolean-prob 3/4)
-            (a-boolean-prob 1/2)
-          (progn (factor-prob 2)
-                 (a-boolean-prob 1/2)))))
-
-=> ((T 3/10) (NIL 3/10) (T 1/5) (NIL 1/5))"
-  (mapcar (lambda (result)
-            ;; Generate a copy of each result to avoid
-            ;; mutating the input
-            (let ((new-result (copy-list result)))
-              ;; Divide the probabilities by their sum to normalize
-              (s:callf (rcurry #'/ total)
-                       (second new-result))
-              new-result))
-          result-list))
 
 ;;; NOTE: The following two functions work only when Screamer is running under
 ;;;       ILisp/GNUEmacs with iscream.el loaded.

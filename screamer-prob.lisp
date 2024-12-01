@@ -11,4 +11,5 @@
           a-member-of-prob
           sample
           sample-optimizing
+          sample-once
           state-transition))
