@@ -31,6 +31,10 @@ see file LICENSE for licensing information.
 See http://nikodemus.github.io/screamer/ for some examples of the core Screamer
 functionality.
 * Version history
+** 5.1.0
+- Incompatible API change to ~n-values~ and ~ith-value~, enclosing the configuration at the
+  beginning of the form. This allows you to run multiple forms within the body of these
+  constructs, and permits extending the construct with more configurations later on.
 ** 5.0.0
 Extension of the library to support probabilistic programming, as well as
 some more utility functions.
