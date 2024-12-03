@@ -3851,7 +3851,7 @@ similar form."
                     d))))
    ;; Normalize the input distribution if its a plist
    (let ((source (typecase source
-                   ((or function null) source)
+                   ((or function nondeterministic-function null) source)
                    (cons
                     (normalize source
                                (reduce #'+ source
@@ -3860,7 +3860,15 @@ similar form."
    ;; Returns a list of the value and the probability
    (flet ((sample-internal (source)
             (typecase source
-              (function (funcall source))
+              ((or function nondeterministic-function)
+               (let* ((ret nil) (local-cont (lambda (inp) (push inp ret))))
+                 (catch '%fail
+                   (funcall-nondeterministic-nondeterministic local-cont source))
+                 ;; Fail unless we have some outputs
+                 (unless ret (fail))
+                 ;; FIXME: Need to figure out how to use all values in ret so that
+                 ;; we can use nondeterministic `source' functions in `sample'
+                 (nreverse ret)))
               (list
                (let* ((probs (mapcar #'second source))
                       (selection (random 1.0))
@@ -3875,7 +3883,9 @@ similar form."
                                ;; Return the current index
                                (iter:finally (return i)))))
                  (release-list probs)
-                 (nth index source))))))
+                 ;; Return a 1-element list to match the format of
+                 ;; function `source's
+                 (list (nth index source)))))))
      (declare (inline sample-internal)))
    ;; Syntax sugar for updating probabilities and calling CONTINUATION
    (macrolet ((call-continuation (cont inp)
@@ -3883,6 +3893,10 @@ similar form."
                    (trail-prob nil (* (current-probability)
                                       (second ,inp)))
                    (funcall ,cont (first ,inp))))))
+   ;; FIXME: Need to fix both paths to deal with `sample-internal'
+   ;; providing multple possible values
+   ;; NOTE: Maybe make count recursive instead? And then
+   ;; call continuation at the end when count is 0?
    (typecase count
      ;; When count is provided
      (non-negative-integer
@@ -3893,7 +3907,7 @@ similar form."
        (choice-point-internal)
        ;; Get the list of values and multiply their probabilities together
        (let ((ret (iter:iter (iter:for i below count)
-                    (iter:for (s sp) = (sample-internal source))
+                    (iter:for (s sp) = (first (sample-internal source)))
                     (iter:collect s into members)
                     (iter:multiply sp into prob)
                     (iter:finally (return (list members prob)))))))
@@ -3906,7 +3920,7 @@ similar form."
        (choice-point-external)
        (loop)
        (choice-point-internal)
-       (let ((ret (sample-internal source))))
+       (let ((ret (first (sample-internal source)))))
        (call-continuation continuation)
        ret)))))
 
