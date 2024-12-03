@@ -3922,8 +3922,11 @@ points."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'sample-optimizing))
 
+;; FIXME: This is similar to `best-value', and designing the correct semantics
+;; is more complicated than I initially gave it credit for
 (cl:defun sample-optimizing (source &key (stop nil stop-supplied) (test 'eql))
-  "Continuously samples values from SOURCE.
+  "EXPERIMENTAL
+Continuously samples values from SOURCE.
 
 SOURCE must be a function which takes as input a list of prior outputs
 from the next enclosing `-VALUES' or `-VALUES-PROB' form (i.e. the current

@@ -1,5 +1,8 @@
 #+title: Changelog
 
+* 5.1.2 (screamer-prob v0.0.3)
+- Moved ~sample-optimizing~ to screamer-experimental until the semantics of optimizing the
+  selected nondeterministic path can be worked out further.
 * 5.1.1 (screamer-prob v0.0.2)
 - Minor incompatible changes to ~sample~ function signature
 - Added ~sample-once~ as a means of sampling without any impact to backtracking
