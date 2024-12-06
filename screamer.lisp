@@ -135,8 +135,13 @@ SIZE-FORM is a positive integer or a form which evaluates to a positive integer,
 Can be used for finer-grained control of nondeterminism.")
 
 (defparameter-compile-time *possibility-consolidator* nil
-  "If non-nil, must be a function which compares 2 values, used for combining
-possibilities generated in ALL-VALUES and ALL-VALUES-PROB.")
+  "EXPERIMENTAL
+If non-nil, must be a function which compares 2 values, used for combining
+possibilities generated in ALL-VALUES and ALL-VALUES-PROB.
+
+This is meant as a simple convenience config, but doesn't play well with some
+other experimental features like `call/cc', so treating as experimental
+for now.")
 
 (defvar-compile-time *numeric-bounds-collapse-threshold* 0.0000000000001
   "The threshold of closeness to consider 2 numbers equivalent.

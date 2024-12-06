@@ -100,5 +100,4 @@
            #:*minimum-shrink-ratio*
            #:*maximum-discretization-range*
            #:*strategy*
-           #:*possibility-consolidator*
            #:*numeric-bounds-collapse-threshold*))
