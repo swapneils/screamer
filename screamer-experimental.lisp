@@ -116,7 +116,15 @@ that x value gets returned, so looks like the
 expansion isn't putting the call to the cc on
 the direct path to the `all-values' collection
 code?"
-  (let (cc-cache)
+  "I think the issue is in part that the
+funcall's output (nil) is being tracked as well.
+Still not sure why the continuation itself doesn't
+push a value into `*screamer-results*', though; the
+output series without the `push'es to `result-cache'
+should be (1 1 nil 3 3 nil) given this model not
+just (1 nil 3 nil)"
+  (let (cc-cache
+        result-cache)
     (all-values
       (let ((x (either 1 2 3 4)))
         (global
@@ -127,9 +135,11 @@ code?"
                      ;; (print (list 'within-cont cc-cache))
                      (funcall cc nil)))
           (print (list 'cc-cache cc-cache 'x x))
-          (if (evenp x)
-              (progn
-                ;; (print (list 'x x))
-                ;; (print (list 'internal cc-cache))
-                (funcall cc-cache (1+ x)))
-              (progn (print (list 'getting-x x)) x)))))))
+          (push (print (list 'result
+                             (if (evenp x)
+                                 (progn
+                                   ;; (print (list 'x x))
+                                   ;; (print (list 'internal cc-cache))
+                                   (funcall cc-cache (1+ x)))
+                                 (progn (print (list 'getting-x x)) x))))
+                result-cache))))))
