@@ -2876,6 +2876,13 @@ expression is always deterministic."
            value)
          result)))
 
+(defvar *last-value-cons* nil
+  "Internal variable tracking the end of `*screamer-results*'
+for purposes of result collection.
+
+Used in other methods (like `call/cc') to maintain stable
+backtracking/collection with nonstandard control flows.")
+
 (defmacro-compile-time all-values (&body body)
   "Evaluates BODY as an implicit PROGN and returns a list of all of the
 nondeterministic values yielded by the it.
@@ -2895,17 +2902,16 @@ always in a nondeterministic context. An ALL-VALUES expression itself is
 always deterministic.
 
 ALL-VALUES is analogous to the `bagof' primitive in Prolog."
-  (let ((values '*screamer-results*)
-        (last-value-cons (gensym "last-value-cons")))
-    `(let ((,values '())
-           (,last-value-cons nil))
+  (let ((values '*screamer-results*))
+    `(let ((,values nil)
+           (*last-value-cons* nil))
        (for-effects
          (let ((value (progn ,@body)))
            (global (if (null ,values)
-                       (setf ,last-value-cons (cached-list value)
-                             ,values ,last-value-cons)
-                       (setf (rest ,last-value-cons) (cached-list value)
-                             ,last-value-cons (rest ,last-value-cons))))))
+                       (setf *last-value-cons* (cached-list value)
+                             ,values *last-value-cons*)
+                       (setf (rest *last-value-cons*) (cached-list value)
+                             *last-value-cons* (rest *last-value-cons*))))))
        (if *possibility-consolidator*
            (flet ((merge-vals (vals)
                     (let ((prev nil))
@@ -2933,10 +2939,9 @@ distributions provided at probabilistic choice points; if
 constraints or FAIL calls remove potential branches, then the
 sum of the probabilities returned will be less than 1."
   (let ((values '*screamer-results*)
-        (last-value-cons (gensym "last-value-cons"))
         (pointer (gensym "enclosing-trail-pointer")))
     `(let ((,values '())
-           (,last-value-cons nil)
+           (*last-value-cons* nil)
            ;; Reset probability
            (,pointer (prog1 (fill-pointer *trail*)
                        (trail-prob nil 1))))
@@ -2944,14 +2949,14 @@ sum of the probabilities returned will be less than 1."
        (for-effects
          (let ((value (progn ,@body)))
            (global (if (null ,values)
-                       (setf ,last-value-cons (cached-list
+                       (setf *last-value-cons* (cached-list
                                                (cached-list value
                                                             (current-probability *trail*)))
-                             ,values ,last-value-cons)
-                       (setf (rest ,last-value-cons) (cached-list
+                             ,values *last-value-cons*)
+                       (setf (rest *last-value-cons*) (cached-list
                                                       (cached-list value
                                                                    (current-probability *trail*)))
-                             ,last-value-cons (rest ,last-value-cons))))))
+                             *last-value-cons* (rest *last-value-cons*))))))
        ;; Return to enclosing trail context
        (unwind-trail-to ,pointer)
        ;; Consolidate probabilities
@@ -3040,12 +3045,11 @@ N."
   (when (numberp n) (assert (and (integerp n) (>= n 0))))
   (let ((counter (gensym "I"))
         (value (gensym "value"))
-        (value-list '*screamer-results*)
-        (last-value-cons (gensym "last-value-cons")))
+        (value-list '*screamer-results*))
     `(block n-values
        (let* ((,counter (value-of ,n))
               (,value-list nil)
-              (,last-value-cons nil))
+              (*last-value-cons* nil))
          (declare (integer ,counter) ((or cons null) ,value-list))
          (for-effects
            (unless (zerop ,counter)
@@ -3054,10 +3058,10 @@ N."
                  (decf ,counter)
                  ;; Add the value to the collected list
                  (if (null ,value-list)
-                     (setf ,last-value-cons (cached-list ,value)
-                           ,value-list ,last-value-cons)
-                     (setf (rest ,last-value-cons) (cached-list ,value)
-                           ,last-value-cons (rest ,last-value-cons)))
+                     (setf *last-value-cons* (cached-list ,value)
+                           ,value-list *last-value-cons*)
+                     (setf (rest *last-value-cons*) (cached-list ,value)
+                           *last-value-cons* (rest *last-value-cons*)))
                  (when (zerop ,counter)
                    (return-from n-values ,value-list))))))
          ,(if default-on-failure default value-list)))))
@@ -3069,12 +3073,11 @@ See the docstring of `ALL-VALUES-PROB' for more details."
   (let ((counter (gensym "I"))
         (value (gensym "value"))
         (value-list '*screamer-results*)
-        (last-value-cons (gensym "last-value-cons"))
         (pointer (gensym "enclosing-trail-pointer")))
     `(block n-values
        (let ((,counter (value-of ,n))
              (,value-list nil)
-             (,last-value-cons nil)
+             (*last-value-cons* nil)
              ;; Reset probability
              (,pointer (prog1 (fill-pointer *trail*)
                          (trail-prob nil 1))))
@@ -3088,10 +3091,10 @@ See the docstring of `ALL-VALUES-PROB' for more details."
                (decf ,counter)
                ;; Add the value to the collected list
                (if (null ,value-list)
-                   (setf ,last-value-cons (cached-list ,value)
-                         ,value-list ,last-value-cons)
-                   (setf (rest ,last-value-cons) (cached-list ,value)
-                         ,last-value-cons (rest ,last-value-cons)))
+                   (setf *last-value-cons* (cached-list ,value)
+                         ,value-list *last-value-cons*)
+                   (setf (rest *last-value-cons*) (cached-list ,value)
+                         *last-value-cons* (rest *last-value-cons*)))
                (when (zerop ,counter)
                  ;; Return to enclosing trail context
                  (unwind-trail-to ,pointer)

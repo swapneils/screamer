@@ -1,5 +1,12 @@
 (in-package :screamer)
 
+;;; TODO: Make the option to continue the continuation more ergonomic?
+;;; Maybe make a separate helper which acts identically save for
+;;; calling the continuation by default?
+;;; FIXME: For forms like `one-value' and `n-values' that use a
+;;; `tagbody' under the hood, invoking the `go' form (which is inevitable
+;;; if you continue the continuation) leads to an error. This makes
+;;; `call/cc' incompatible with such forms.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'call/cc))
 (cl:defun call/cc (f)
@@ -37,20 +44,6 @@ standard behavior for dynamic bindings takes precedence).
 
 `call/cc' does not currently work in `one-value' forms.
 
-(let* (cc
-       (f (lambda (cc-internal) (setf cc cc-internal))))
-  (all-values
-    (let ((x (either 1 2 3)))
-      (print (call/cc f))
-      (print 'hi)
-      (print x)))
-  (let (*screamer-results*)
-    (choice-point (funcall cc 'hello))
-    (print *screamer-results*)
-    (choice-point (funcall cc 'hello))
-    (print *screamer-results*)
-))
-
 Example code:
 (let* (cc-list
        (f (lambda (cc-internal)
@@ -75,16 +68,34 @@ Example code:
    "CALL/CC is a nondeterministic function. As such, it must be called only~%~
    from a nondeterministic context."))
 (cl:defun call/cc-nondeterministic (continuation f)
-  ;; (print "starting call/cc")
-  (let ((cont (lambda (inp)
-                (choice-point
-                 (funcall continuation inp)))))
-    (funcall f cont))
-  ;; (fail)
-  ;; (print "continuing call/cc")
-  ;; (funcall continuation nil)
-  ;; (print "leaving call/cc")
-  )
+  (let* ((stored-prob (current-probability))
+         (cont (lambda (inp)
+                 ;; Fix nondeterministic result accumulation by setting
+                 ;; `*last-value-cons*' so we don't crash if
+                 ;; `*screamer-results*' is non-`nil' before the result-
+                 ;; accumulator the continuation comes from (assuming it is
+                 ;; from one).
+                 ;; TODO: Figure out if this can be done more elegantly
+                 ;; than by making a new internal special variable
+                 ;; just to track the ending of `*screamer-results*'
+                 (let ((*last-value-cons* (last *screamer-results*)))
+                   ;; Create a choice point and restore the
+                   ;; probability value from the stored execution
+                   ;; FIXME: Not sure why this wrapping `choice-point'
+                   ;; is needed, but without it the probability
+                   ;; doesn't get set properly
+                   (choice-point
+                    (factor-prob-nondeterministic
+                     ;; Ignore the output of `factor-prob' and
+                     ;; continue the continuation
+                     (lambda (x)
+                       (declare (ignore x))
+                       (funcall continuation inp))
+                     ;; Figure out what factor needs to be
+                     ;; applied to reach `stored-prob' from
+                     ;; the current probability
+                     (/ stored-prob (current-probability))))))))
+    (funcall f cont)))
 
 
 (export '(collect-trail
@@ -95,12 +106,3 @@ Example code:
           factor-prob
           *possibility-consolidator*
           call/cc))
-(let* (cc
-       (f (lambda (cc-internal) (setf cc cc-internal))))
-  (all-values-prob
-    (print (call/cc f))
-    (print 'hi)
-    (print (either 1 2 3)))
-  (let (*screamer-results*)
-    (choice-point (funcall cc 'hello))
-    (print *screamer-results*)))
