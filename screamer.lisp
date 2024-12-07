@@ -3204,7 +3204,10 @@ been previously encountered within the current instance of nondeterministic cont
 the output from that execution will be retrieved from cache without evaluating BODY.
 
 Note that all possible values of BODY are iterated through before PURE-VALUES starts
-emitting return values."
+emitting return values.
+
+Note that this is not a probabilistic form, and will not propagate probabilities in
+BODY to the containing nondeterministic context."
   (declare (ignore environment))
   (let ((loc-key (gensym "screamer-pure-values")))
     (with-gensyms (param-outputs cache-value)
@@ -3231,7 +3234,7 @@ Like PURE-VALUES, but only caches/outputs one value from the body, similar to ON
            (or ,cache-value
                (screamer::cache-pure-put ',loc-key
                                          ,param-outputs
-                                         (local ,@body))))))))
+                                         (one-value (local ,@body)))))))))
 
 
 ;;; In classic Screamer TRAIL is unexported and UNWIND-TRAIL is exported. This
