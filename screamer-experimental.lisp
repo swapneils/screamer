@@ -106,3 +106,30 @@ Example code:
           factor-prob
           *possibility-consolidator*
           call/cc))
+
+
+
+;;; FIXME: fix the below case to return (1 1 3 3)
+(s:comment
+  "If we add an x after the call to `cc-cache'
+that x value gets returned, so looks like the
+expansion isn't putting the call to the cc on
+the direct path to the `all-values' collection
+code?"
+  (let (cc-cache)
+    (all-values
+      (let ((x (either 1 2 3 4)))
+        (global
+          ;; (print (list 'early cc-cache))
+          (call/cc (lambda (cc)
+                     (when (oddp x)
+                       (setf cc-cache cc))
+                     ;; (print (list 'within-cont cc-cache))
+                     (funcall cc nil)))
+          (print (list 'cc-cache cc-cache 'x x))
+          (if (evenp x)
+              (progn
+                ;; (print (list 'x x))
+                ;; (print (list 'internal cc-cache))
+                (funcall cc-cache (1+ x)))
+              (progn (print (list 'getting-x x)) x)))))))
