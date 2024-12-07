@@ -3344,8 +3344,10 @@ Example:
    "FACTOR-PROB is a nondeterministic function. As such, it must be called only~%~
    from a nondeterministic context."))
 (cl:defun factor-prob-nondeterministic (continuation p)
-  (trail-prob nil (* (current-probability) p))
-  (funcall continuation (current-probability)))
+  (choice-point-external
+   (trail-prob nil (* (current-probability) p))
+   (choice-point-internal
+    (funcall continuation (current-probability)))))
 
 (cl:defun normalize-probabilities (result-list &key (total nil)
                                    &aux (total (or total
