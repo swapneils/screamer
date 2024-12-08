@@ -27,7 +27,7 @@
 ;;;; IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 ;;;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-(defsystem :screamer-core
+(defsystem :screamer/core
   :serial t
   :licence "MIT"
   :description "The core Screamer functionality"
@@ -41,18 +41,18 @@
   ((:file "package")
    (:file "screamer")))
 
-(defmethod perform ((o test-op) (c (eql (find-system :screamer-core))))
+(defmethod perform ((o test-op) (c (eql (find-system :screamer/core))))
   (load-system :screamer-tests)
   (funcall (intern (string '#:test-screamer) :screamer-tests)))
 
-(defsystem :screamer-prob
+(defsystem :screamer/prob
   :serial t
   :licence "MIT"
   :description "Probabilistic reasoning for Screamer."
   :author "Swapneil Singh"
   :maintainer "Swapneil Singh"
   :version "0.0.3"
-  :depends-on ("screamer-core")
+  :depends-on ("screamer/core")
   :components
   ((:file "screamer-prob")))
 
@@ -62,8 +62,8 @@
   :author "Originally Jeffrey Mark Siskind & David Allen McAllester, extended by Swapneil Singh"
   :maintainer "Swapneil Singh"
   :version "5.1.1"
-  :depends-on ("screamer-core"
-               "screamer-prob"))
+  :depends-on ("screamer/core"
+               "screamer/prob"))
 
 (defsystem :screamer-experimental
   :serial t
