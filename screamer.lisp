@@ -2929,15 +2929,17 @@ always in a nondeterministic context. An ALL-VALUES expression itself is
 always deterministic.
 
 ALL-VALUES is analogous to the `bagof' primitive in Prolog."
-  (let ((values '*screamer-results*))
+  (let ((values '*screamer-results*)
+        (value (gensym "value")))
     `(let ((,values nil)
            (*last-value-cons* nil))
        (for-effects
-         (let ((value (progn ,@body)))
+         (let* ((,value (progn ,@body))
+                (,value (if (consp ,value) (copy-list ,value) ,value)))
            (global (if (null ,values)
-                       (setf *last-value-cons* (cached-list value)
+                       (setf *last-value-cons* (cached-list ,value)
                              ,values *last-value-cons*)
-                       (setf (rest *last-value-cons*) (cached-list value)
+                       (setf (rest *last-value-cons*) (cached-list ,value)
                              *last-value-cons* (rest *last-value-cons*))))))
        (if *possibility-consolidator*
            (flet ((merge-vals (vals)
@@ -2966,7 +2968,8 @@ distributions provided at probabilistic choice points; if
 constraints or FAIL calls remove potential branches, then the
 sum of the probabilities returned will be less than 1."
   (let ((values '*screamer-results*)
-        (pointer (gensym "enclosing-trail-pointer")))
+        (pointer (gensym "enclosing-trail-pointer"))
+        (value (gensym "value")))
     `(let ((,values '())
            (*last-value-cons* nil)
            ;; Reset probability
@@ -2974,15 +2977,16 @@ sum of the probabilities returned will be less than 1."
                        (trail-prob nil 1))))
        ;; Process BODY
        (for-effects
-         (let ((value (progn ,@body)))
+         (let* ((,value (progn ,@body))
+                (,value (if (consp ,value) (copy-list ,value) ,value)))
            (global (if (null ,values)
                        (setf *last-value-cons* (cached-list
-                                               (cached-list value
-                                                            (current-probability *trail*)))
+                                                (cached-list ,value
+                                                             (current-probability *trail*)))
                              ,values *last-value-cons*)
                        (setf (rest *last-value-cons*) (cached-list
-                                                      (cached-list value
-                                                                   (current-probability *trail*)))
+                                                       (cached-list ,value
+                                                                    (current-probability *trail*)))
                              *last-value-cons* (rest *last-value-cons*))))))
        ;; Return to enclosing trail context
        (unwind-trail-to ,pointer)
@@ -3093,7 +3097,8 @@ N."
          (for-effects
            (unless (zerop ,counter)
              (global
-               (let ((,value (progn ,@body)))
+               (let* ((,value (progn ,@body))
+                      (,value (if (consp ,value) (copy-list ,value) ,value)))
                  (decf ,counter)
                  ;; Add the value to the collected list
                  (if (null ,value-list)
@@ -3125,6 +3130,7 @@ See the docstring of `ALL-VALUES-PROB' for more details."
          (for-effects
            (unless (zerop ,counter)
              (let* ((,value (progn ,@body))
+                    (,value (if (consp ,value) (copy-list ,value) ,value))
                     (,value (cached-list ,value
                                          (current-probability *trail*))))
                (decf ,counter)
@@ -8898,3 +8904,19 @@ This is useful for creating patterns to be unified with other structures."
 ;;        (print b)
 ;;        (print c)
 ;;        (solution (list b c) (static-ordering #'linear-force))))
+
+;;; FIXME: There are memory faults somewhere in the screamer code
+;;; If you use a `solution' form to wrap conses at the terminal position,
+;;; then they get collected properly. However, if you just return
+;;; them directly, components of them end up getting replaced.
+;;;
+;;; Replacing the `*last-value-cons*' code with a simple append fails
+;;; to fix the issue in `all-values', while wrapping the body in `global'
+;;; seems to at least succeed without weird replacement values, so this
+;;; may be a bug in the CPS code for mutation, mutating a component of
+;;; the collected final results when it shouldn't.
+;;;
+;;; NOTE: Confirmed that using `copy-list' at the end of an `all-values'
+;;; form fixes the issue.
+;;; NOTE: Mitigated for now by using `copy-list' for any `consp' results
+;;; in aggregation forms.
