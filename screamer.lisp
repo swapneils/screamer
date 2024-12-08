@@ -4625,7 +4625,7 @@ Otherwise returns the value of X."
     ((and (variable? value) (not (eq value (variable-value value))))
      (occurs-in? x (variable-value value)))
     ((consp value) (or (occurs-in? x (car value)) (occurs-in? x (cdr value))))
-    ((vectorp value) (some (lambda (val) (occurs-in? x val)) value))
+    ((s:sequencep value) (some (lambda (val) (occurs-in? x val)) value))
     ((arrayp value) (block occurs-in
                       (dotimes (idx (array-total-size value))
                         (when (occurs-in? x (row-major-aref value idx))
