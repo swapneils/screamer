@@ -8666,7 +8666,7 @@ VALUES can be either a vector or a list designator."
       ;; NOTE: Kludged
       (setf new-vars (set-difference deps variables))
       ;; Sort new dependencies to force bounded variables first
-      (setf new-vars (sort new-vars (lambda (a b) (and (bounded? b) (not (bounded? a))))))
+      (setf new-vars (sort new-vars (lambda (a b) (and (bounded? a) (not (bounded? b))))))
       ;; Add each layer of dependencies to the start of the variable list
       (setf variables (append new-vars variables))))
   ;; Remove any undesired elements creeping in from mistakes in variable
