@@ -3328,7 +3328,7 @@ extract information from the collected trails."
    from a nondeterministic context."))
 (cl:defun collect-trail-nondeterministic (continuation)
   (push (copy-seq *trail*) (gethash :trail *nondeterministic-context*))
-  (funcall continuation))
+  (funcall continuation t))
 
 
 (defun current-probability (&optional (trail *trail*))
