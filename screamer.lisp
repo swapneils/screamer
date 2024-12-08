@@ -2997,16 +2997,28 @@ to the expected value of the output of BODY.
 Throws an exception if body outputs any non-numeric value.
 
 Returns NIL if all branches of BODY fail."
-  `(s:nest
-    (funcall (lambda (x)
-               (prog1
-                   (unless (zerop (second x))
-                     (/ (first x) (second x)))
-                 ;; Release the juxt list to the cons cache
-                 (release-list x))))
-    (funcall (s:juxt (lambda (x) (reduce #'+ x :key (curry #'reduce #'*)))
-                     (lambda (x) (reduce #'+ x :key #'second))))
-    (all-values-prob ,@body)))
+  (with-gensyms (aggregates)
+    `(let ((,aggregates
+             (funcall (s:juxt (s:op (reduce #'+ _ :key (curry #'reduce #'*)))
+                              (s:op (reduce #'+ _ :key #'second)))
+                      (all-values-prob ,@body))))
+       (prog1
+           (unless (zerop (second ,aggregates))
+             (/ (first ,aggregates) (second ,aggregates)))
+         ;; Release the juxt list to the cons cache
+         (release-list ,aggregates))))
+  ;; NOTE: Old version of this code
+  ;; `(s:nest
+  ;;   (funcall (lambda (x)
+  ;;              (prog1
+  ;;                  (unless (zerop (second x))
+  ;;                    (/ (first x) (second x)))
+  ;;                ;; Release the juxt list to the cons cache
+  ;;                (release-list x))))
+  ;;   (funcall (s:juxt (lambda (x) (reduce #'+ x :key (curry #'reduce #'*)))
+  ;;                    (lambda (x) (reduce #'+ x :key #'second))))
+  ;;   (all-values-prob ,@body))
+  )
 
 (defmacro-compile-time n-values ((n &key (default nil default-on-failure)) &body body)
   "Returns the first N nondeterministic values yielded by BODY.
