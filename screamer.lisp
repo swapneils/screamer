@@ -3899,7 +3899,7 @@ If you want to use SAMPLE inside a larger nondeterministic
 block, it may be useful to wrap it in its own ALL-VALUES,
 ALL-VALUES-PROB, N-VALUES, N-VALUES-PROB, ONE-VALUE, or
 similar form."
-  (declare (ignore source count))
+  (declare (ignore source count stop stop-supplied test))
   (screamer-error
    "SAMPLE is a nondeterministic function. As such, it must be~%~
    called only from a nondeterministic context."))
