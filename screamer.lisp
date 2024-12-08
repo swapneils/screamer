@@ -4599,9 +4599,10 @@ domain includes structures that themselves contain variables."
 a freshly consed copy of the tree with all variables dereferenced.
 Otherwise returns the value of X."
   (let ((x (value-of x)))
-    (if (consp x)
-        (cached-cons (apply-substitution (car x)) (apply-substitution (cdr x)))
-        x)))
+    (cond ((consp x) (cached-cons (apply-substitution (car x))
+                                  (apply-substitution (cdr x))))
+          ((vectorp x) (map 'vector #'apply-substitution x))
+          (t x))))
 
 (defun occurs-in? (x value)
   ;; NOTE: X must be a variable such that (EQ X (VALUE-OF X)).
@@ -8645,11 +8646,13 @@ VALUES can be either a vector or a list designator."
 
 (defun variables-in (x)
   ;; Get initial variable list from `x'
-  (typecase x
-    (cons (append (variables-in (car x))
-                  (variables-in (cdr x))))
-    (variable (cached-list x))
-    (otherwise nil)))
+  (the list
+       (typecase x
+         (cons (append (variables-in (car x))
+                       (variables-in (cdr x))))
+         (vector (apply #'append (map 'list #'variables-in x)))
+         (variable (cached-list x))
+         (otherwise nil))))
 
 ;;; NOTE: SOLUTION and LINEAR-FORCE used to be here but was moved to be before
 ;;;       KNOWN?-CONSTRAINT to avoid forward references to nondeterministic
