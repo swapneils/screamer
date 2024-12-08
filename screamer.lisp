@@ -4568,7 +4568,7 @@ returns NIL. BOUND? is analogous to the extra-logical predicates `var' and
   "Returns true if there are finite possible values for X."
   (or (bound? x)
       (or (variable-boolean? x)
-          (not (member (variable-enumerated-domain x) '(t nil)))
+          (not (serapeum:in (variable-enumerated-domain x) t nil))
           (and
            (variable-integer? x)
            (variable-lower-bound x)
@@ -8665,6 +8665,8 @@ VALUES can be either a vector or a list designator."
       ;; Filter out dependencies that are already tracked
       ;; NOTE: Kludged
       (setf new-vars (set-difference deps variables))
+      ;; Sort new dependencies to force bounded variables first
+      (setf new-vars (sort new-vars (lambda (a b) (and (bounded? b) (not (bounded? a))))))
       ;; Add each layer of dependencies to the start of the variable list
       (setf variables (append new-vars variables))))
   ;; Remove any undesired elements creeping in from mistakes in variable
@@ -9001,17 +9003,18 @@ This is useful for creating patterns to be unified with other structures."
 ;; identifies unbound but related terms in a tree and merges them into a new
 ;; set of potential values
 ;; Example:
-;; (all-values
-;;      (let* ((b (template '(1 2 ?a 4 ?a)))
-;;             (c (applyv #'+v b)))
-;;        (print b)
-;;        (print c)
-;;        (assert! (integerpv (third b)))
-;;        (assert! (=v (an-integer-betweenv 1 3) c))
-;;        (assert! (integerpv c))
-;;        (print b)
-;;        (print c)
-;;        (solution (list b c) (static-ordering #'linear-force))))
+(serapeum:comment
+  (all-values
+    (let* ((b (template '(1 2 ?a 4 ?a)))
+           (c (applyv #'+v b)))
+      (print b)
+      (print c)
+      (assert! (integerpv (third b)))
+      (assert! (=v (an-integer-betweenv 1 3) c))
+      (assert! (integerpv c))
+      (print b)
+      (print c)
+      (solution (list b c) (static-ordering #'linear-force)))))
 
 ;;; FIXME: There are memory faults somewhere in the screamer code
 ;;; If you use a `solution' form to wrap conses at the terminal position,
