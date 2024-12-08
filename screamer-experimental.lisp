@@ -68,6 +68,9 @@ Example code:
    "CALL/CC is a nondeterministic function. As such, it must be called only~%~
    from a nondeterministic context."))
 (cl:defun call/cc-nondeterministic (continuation f)
+  (declare (function continuation))
+  ;; NOTE: Not declaring F a function in case it's something else
+  ;; that's funcallable
   (let* ((stored-prob (current-probability))
          (cont (lambda (inp)
                  ;; Fix nondeterministic result accumulation by setting

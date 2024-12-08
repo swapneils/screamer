@@ -149,55 +149,86 @@ Use this to deal with floating-point errors, if necessary.")
 
 (defun-compile-time roughly-= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
-  (declare (number a b))
-  (cond
-    ((or (floatp a) (floatp b))
-     (or (= a b)
-         (<= (abs (- a b)) *numeric-bounds-collapse-threshold*)))
-    (t (= a b))))
+  (declare (number a b)
+           (optimize (speed 3) (safety 1) (debug 0)))
+  (or (= a b)
+      ;; For floats, also allow them to be "close enough"
+      (and (floatp a) (floatp b)
+           (<= (abs (- a b))
+               *numeric-bounds-collapse-threshold*))))
+(declaim (inline roughly-=))
 
 (defun-compile-time roughly-<= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
-  (declare (number a b))
-  (cond
-    ((or (floatp a) (floatp b))
-     (or (<= a b)
-         (<= (abs (- a b)) *numeric-bounds-collapse-threshold*)))
-    (t (<= a b))))
+  (declare (number a b)
+           (optimize (speed 3) (safety 1) (debug 0)))
+  (or (<= a b) (roughly-= a b)))
+(declaim (inline roughly-<=))
+
+(defun-compile-time roughly->= (a b)
+  ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
+  (declare (number a b)
+           (optimize (speed 3) (safety 1) (debug 0)))
+  (or (>= a b) (roughly-= a b)))
+(declaim (inline roughly->=))
 
 (defvar-compile-time *cons-cache* (cons nil nil)
   "A cache of conses, to hopefully reduce memory usage")
 (defvar-compile-time *cons-cache-len* 0)
 (defvar-compile-time *cons-cache-max-len* 2048)
+
 (defun-compile-time cached-cons (a b)
+  (declare
+   (type (integer 0) *cons-cache-len*)
+   (optimize (speed 3)
+             (space 3)
+             (safety 1)
+             (debug 0)))
   (if (cdr *cons-cache*)
       (let ((c (cdr *cons-cache*)))
-        (setf (cdr *cons-cache*) (cdr c))
-        (setf (car c) a (cdr c) b)
+        (setf (cdr *cons-cache*) (cdr c)
+              (car c) a (cdr c) b)
         (decf *cons-cache-len*)
         c)
       (cons a b)))
+(declaim (inline cached-cons))
+
 (defun-compile-time release-cons (c)
+  (declare (list *cons-cache*)
+           (type (integer 0) *cons-cache-len*)
+           (optimize (speed 3)
+                     (space 3)
+                     (safety 0)
+                     (debug 0)))
   (when (and (consp c)
              ;; Cache isn't already full to capacity.
-             (not (>= *cons-cache-len* *cons-cache-max-len*)))
+             (< *cons-cache-len* *cons-cache-max-len*))
     ;; Insert cons as the second element of the cache
     (rotatef (cdr c) (cdr *cons-cache*) c)
+    ;; NOTE: Remove contained objects for garbage collection
     (setf (cadr *cons-cache*) nil)
     (incf *cons-cache-len*)))
 
+(defmacro-compile-time cached-list-internal (v &rest vals)
+  `(cached-cons ,v ,(when vals `(cached-list-internal ,@vals))))
 (defmacro-compile-time cached-list (v &rest vals)
-  `(cached-cons ,v ,(when vals `(cached-list ,@vals))))
-(defmacro-compile-time cached-list* (v &optional v2 &rest vals)
+  `(the list (cached-list-internal ,v ,@vals)))
+
+(defmacro-compile-time cached-list*-internal (v &optional v2 &rest vals)
   `(cached-cons ,v ,(if vals `(cached-list* ,v2 ,@vals) v2)))
+(defmacro-compile-time cached-list* (v &rest vals)
+  `(the list (cached-list*-internal ,v ,@vals)))
+
 (defun-compile-time release-list (l)
   (iter:iter
     (iter:for x initially l then y)
     (iter:for y = (cdr x))
     (iter:while y)
     (release-cons x)))
+
 (defmacro-compile-time cached-push (v place)
   `(setf ,place (cached-cons ,v ,place)))
+
 (defun-compile-time cached-mapcar (f s)
   "Mapcar on one sequence at a time, but uses
 `*cons-cache*' to reduce consing.
@@ -227,17 +258,13 @@ in comparison to `cl:mapcar'"
 
 (defun-compile-time notf (f)
   (lambda (&rest xs)
-    (prog1 (not (apply f xs))
-      (release-list xs))))
-(defun-compile-time andf (f &rest fs)
+    (not (apply f xs))))
+(defun-compile-time andf (&rest fs)
   (lambda (&rest xs)
-    (and (apply f xs)
-         (or (not fs)
-             (apply (apply #'andf fs) xs)))))
-(defun-compile-time orf (f &rest fs)
+    (every (rcurry #'apply xs) fs)))
+(defun-compile-time orf (&rest fs)
   (lambda (&rest xs)
-    (or (apply f xs)
-        (and fs (apply (apply #'orf fs) xs)))))
+    (some (rcurry #'apply xs) fs)))
 
 (defvar-compile-time *function-record-table* (make-hash-table :test #'equal)
   "The function record table.")
@@ -3054,7 +3081,7 @@ If N is nondeterministic then the N-VALUES expression operates
 nondeterministically on each value of N. In this case, backtracking for each
 value of BODY and DEFAULT is nested in, and restarted for, each backtrack of
 N."
-  (when (numberp n) (assert (and (integerp n) (>= n 0))))
+  (when (numberp n) (assert (typep n '(integer 0))))
   (let ((counter (gensym "I"))
         (value (gensym "value"))
         (value-list '*screamer-results*))
@@ -3081,7 +3108,7 @@ N."
 (defmacro-compile-time n-values-prob ((n &key (default nil default-on-failure)) &body body)
   "Identical to N-VALUES, but returns pairs of values and probabilities.
 See the docstring of `ALL-VALUES-PROB' for more details."
-  (when (numberp n) (assert (and (integerp n) (>= n 0))))
+  (when (numberp n) (assert (typep n '(integer 0))))
   (let ((counter (gensym "I"))
         (value (gensym "value"))
         (value-list '*screamer-results*)
@@ -3264,10 +3291,13 @@ Functions on the trail are called when unwinding from a nondeterministic
 selection (due to either a normal return, or calling FAIL.)"
   ;; NOTE: Is it really better to use VECTOR-PUSH-EXTEND than CONS for the
   ;;       trail?
+  (declare (optimize (speed 3) (space 3)))
   (when *nondeterministic-context*
     (vector-push-extend function *trail* 1024))
   function)
 (defun trail-prob (function prob)
+  (declare (number prob)
+           (optimize (speed 3) (space 3)))
   (when *nondeterministic-context*
     (vector-push-extend
      (cond ((and function prob) (list function prob))
@@ -3278,6 +3308,7 @@ selection (due to either a normal return, or calling FAIL.)"
 
 (defun pop-trail (trail)
   (vector-pop trail))
+(declaim (inline pop-trail))
 
 (defun unwind-trail-to (trail-pointer)
   (declare (fixnum trail-pointer))
@@ -3332,6 +3363,7 @@ extract information from the collected trails."
 
 
 (defun current-probability (&optional (trail *trail*))
+  (declare (optimize (speed 3) (debug 1) (safety 1)))
   (labels ((zero-one (n)
              (typecase n
                ;; N is a number between 0 and 1
@@ -3341,10 +3373,8 @@ extract information from the collected trails."
                    ((and (listp elem)
                          (zero-one (second elem)))
                     (second elem)))))
-    (or (find-if #'identity trail
-                 :from-end t
-                 :key #'get-trail-prob)
-        1)))
+    (the number
+     (or (find-if #'identity trail :from-end t :key #'get-trail-prob) 1))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'factor-prob))
@@ -3357,11 +3387,13 @@ Returns the new probability.
 Example:
 (all-values-prob (if (a-boolean-prob 3/4) (progn (factor-prob (/ 1 (current-probability))) (a-boolean-prob 1/2)) (fail)))
 => ((T 1/2) (NIL 1/2))"
-  (declare (ignore p))
+  (declare (ignore p) (number p))
   (screamer-error
    "FACTOR-PROB is a nondeterministic function. As such, it must be called only~%~
    from a nondeterministic context."))
 (cl:defun factor-prob-nondeterministic (continuation p)
+  (declare (function continuation) (number p)
+           (optimize (speed 3) (space 3) (debug 1)))
   (choice-point-external
    (trail-prob nil (* (current-probability) p))
    (choice-point-internal
@@ -3390,6 +3422,8 @@ Example:
                  (a-boolean-prob 1/2)))))
 
 => ((T 3/10) (NIL 3/10) (T 1/5) (NIL 1/5))"
+  (declare (list result-list) (type (or number null) total)
+           (optimize (speed 3)))
   (mapcar (lambda (result)
             ;; Generate a copy of each result to avoid
             ;; mutating the input
@@ -3865,8 +3899,10 @@ similar form."
    called only from a nondeterministic context."))
 
 (cl:defun sample-nondeterministic (continuation source &key count)
+  (declare (function continuation) (type (or (integer 0) null) count))
   (s:nest
    (flet ((normalize (d psum)
+            (declare (number psum))
             ;; Normalize a list-distribution given the sum
             ;; of the probabilities
             (mapcar (lambda (c)
