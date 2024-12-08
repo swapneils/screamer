@@ -108,6 +108,7 @@ Example code:
           normalize-probabilities
           factor-prob
           *possibility-consolidator*
+          *screamer-max-failures*
           call/cc))
 
 

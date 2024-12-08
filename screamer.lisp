@@ -85,6 +85,25 @@ to DEFPACKAGE, and automatically injects two additional options:
 (defparameter-compile-time *screamer-version* (asdf:component-version (asdf:find-system :screamer))
   "The version of Screamer which is loaded.")
 
+(defparameter-compile-time *screamer-max-failures* nil
+  "The maximum number of failures Screamer will accept in a nondeterministic context
+before giving up.
+
+It is recommended that this remain globally NIL. To configure this behavior, set it
+via a `let' form around a particular invocation of FOR-EFFECTS or its derivative forms
+(e.g. ONE-VALUE, ALL-VALUES).
+
+If this is NIL (the default) Screamer will keep searching forever.
+If this is a positive integer, once that number of failures is reached any call to `fail'
+will exit the closest FOR-EFFECTS form and reset the failure counter.
+
+If there are multiple lexical definitions of `*screamer-max-failures*' within the same
+`for-effects' form, the count of failures will be maintained at the level of the `for-effects'
+form, but will not be incremented in dynamic contexts where `*screamer-max-failures*' is NIL.")
+(defvar-compile-time *screamer-failures* 0
+  "Tracks the number of failures for *screamer-max-failures*. Defaults to 0.
+This should only be modified by the `fail' function and `for-effects' macro.")
+
 (defvar-compile-time *dynamic-extent?* t
   "DEPRECATED: Currently has no effect.
 
@@ -2845,9 +2864,11 @@ contexts. Irrespective of what context the FOR-EFFECTS appears in, BODY are
 always in a nondeterministic context. A FOR-EFFECTS expression is is always
 deterministic."
   `(prog1
-       (choice-point
-        ,(let ((*compiling-nondeterministic-context?* t))
-           (cps-convert-progn body '#'fail nil nil environment)))
+       (catch '%escape
+         (let ((*screamer-failures* 0))
+           (choice-point
+            ,(let ((*compiling-nondeterministic-context?* t))
+               (cps-convert-progn body '#'fail nil nil environment)))))
      (unless *nondeterministic-context*
        (setf *pure-cache* nil))))
 
@@ -3555,6 +3576,10 @@ FAIL is deterministic function and thus it is permissible to reference #'FAIL,
 and write \(FUNCALL #'FAIL) or \(APPLY #'FAIL).
 
 Calling FAIL when there is no choice-point to backtrack to signals an error."
+  (when *screamer-max-failures*
+    (incf *screamer-failures*)
+    (when (> *screamer-failures* *screamer-max-failures*)
+      (throw '%escape nil)))
   (funcall *fail*))
 
 (defmacro-compile-time when-failing ((&body failing-forms) &body body)
