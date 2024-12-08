@@ -4466,6 +4466,16 @@ returns NIL. BOUND? is analogous to the extra-logical predicates `var' and
 `nonvar' typically available in Prolog."
   (not (variable? (value-of x))))
 
+(defun bounded? (x)
+  "Returns true if there are finite possible values for X."
+  (or (bound? x)
+      (or (variable-boolean? x)
+          (variable-enumerated-domain x)
+          (and
+           (variable-integer? x)
+           (variable-lower-bound x)
+           (variable-upper-bound x)))))
+
 (defun ground? (x)
   "The primitive GROUND? is an extension of the primitive BOUND? which
 can recursively determine whether an entire aggregate object is
@@ -4475,7 +4485,18 @@ a CONS tree where all atoms are bound.
 Otherwise returns nil."
   (let ((x (value-of x)))
     (and (not (variable? x))
-         (or (not (consp x)) (and (ground? (car x)) (ground? (cdr x)))))))
+         (or (not (consp x))
+             (and (ground? (car x))
+                  (ground? (cdr x)))))))
+
+(defun grounded? (x)
+  "Similar to GROUND?, but extending BOUNDED? instead of BOUND?
+NOTE: This may not work correctly on variables whose enumerated
+domain includes structures that themselves contain variables."
+  (and (bounded? x)
+       (or (not (consp x))
+           (and (grounded? (car x))
+                (grounded? (cdr x))))))
 
 (defun apply-substitution (x)
   "If X is a CONS, or a variable whose value is a CONS, returns
