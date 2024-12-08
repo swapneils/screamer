@@ -4601,9 +4601,9 @@ domain includes structures that themselves contain variables."
 a freshly consed copy of the tree with all variables dereferenced.
 Otherwise returns the value of X."
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (cons (cached-cons (apply-substitution (car x))
-                                  (apply-substitution (cdr x))))
+                         (apply-substitution (cdr x))))
       (vector (map 'vector #'apply-substitution x))
       (array (flet ((map-arr (arr f)
                       (dotimes (idx (array-total-size arr))
@@ -4615,7 +4615,7 @@ Otherwise returns the value of X."
        (let ((x (copy-hash-table x)))
          (maphash (lambda (k v) (setf (gethash k x) (apply-substitution v))) x)
          x))
-      (otherwise x))))
+      (t x))))
 
 (defun occurs-in? (x value)
   ;; NOTE: X must be a variable such that (EQ X (VALUE-OF X)).
@@ -5203,12 +5203,12 @@ Otherwise returns the value of X."
   ;; NOTE: X must be a variable such that (EQ X (VALUE-OF X)).
   ;; NOTE: VALUE must not be a variable.
   (if (occurs-in? x value) (fail))
-  (typecase value
+  (etypecase value
     (integer (unless (variable-possibly-integer? x) (fail)))
     (real (unless (variable-possibly-noninteger-real? x) (fail)))
     (number (unless (variable-possibly-nonreal-number? x) (fail)))
     (boolean (unless (variable-possibly-boolean? x) (fail)))
-    (otherwise (unless (variable-possibly-nonboolean-nonnumber? x) (fail))))
+    (t (unless (variable-possibly-nonboolean-nonnumber? x) (fail))))
   ;; needs work: This is sound only if VALUE does not contain any variables.
   (if (eq (variable-enumerated-domain x) t)
       (if (member value (variable-enumerated-antidomain x) :test #'equal)
@@ -5222,7 +5222,7 @@ Otherwise returns the value of X."
                     (> value (variable-upper-bound x)))))
       (fail))
   (local (setf (variable-value x) value)
-    (typecase value
+    (etypecase value
       (integer (if (variable-possibly-noninteger-real? x)
                    (setf (variable-possibly-noninteger-real? x) nil))
        (if (variable-possibly-nonreal-number? x)
@@ -5269,8 +5269,8 @@ Otherwise returns the value of X."
            (setf (variable-possibly-nonreal-number? x) nil))
        (if (variable-possibly-nonboolean-nonnumber? x)
            (setf (variable-possibly-nonboolean-nonnumber? x) nil)))
-      (otherwise (if (variable-possibly-integer? x)
-                     (setf (variable-possibly-integer? x) nil))
+      (t (if (variable-possibly-integer? x)
+             (setf (variable-possibly-integer? x) nil))
        (if (variable-possibly-noninteger-real? x)
            (setf (variable-possibly-noninteger-real? x) nil))
        (if (variable-possibly-nonreal-number? x)
@@ -5915,59 +5915,59 @@ Otherwise returns the value of X."
 
 (defun known?-integerpv (x)
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (integer t)
       (variable (variable-integer? x))
-      (otherwise nil))))
+      (t nil))))
 
 (defun known?-notv-integerpv (x)
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (integer nil)
       (variable (variable-noninteger? x))
-      (otherwise t))))
+      (t t))))
 
 (defun known?-realpv (x)
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (real t)
       (variable (variable-real? x))
-      (otherwise nil))))
+      (t nil))))
 
 (defun known?-notv-realpv (x)
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (real nil)
       (variable (variable-nonreal? x))
-      (otherwise t))))
+      (t t))))
 
 (defun known?-numberpv (x)
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (number t)
       (variable (variable-number? x))
-      (otherwise nil))))
+      (t nil))))
 
 (defun known?-notv-numberpv (x)
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (number nil)
       (variable (variable-nonnumber? x))
-      (otherwise t))))
+      (t t))))
 
 (defun known?-booleanpv (x)
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (boolean t)
       (variable (variable-boolean? x))
-      (otherwise nil))))
+      (t nil))))
 
 (defun known?-notv-booleanpv (x)
   (let ((x (value-of x)))
-    (typecase x
+    (etypecase x
       (boolean nil)
       (variable (variable-nonboolean? x))
-      (otherwise t))))
+      (t t))))
 
 ;;; Lifted Arithmetic Comparison Functions (Two argument KNOWN? optimized)
 
