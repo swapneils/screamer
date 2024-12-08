@@ -50,7 +50,7 @@ Example code:
             (push cc-internal cc-list)
             (print \"calling\")
             (print cc-list)
-            (choice-point (funcall cc-internal nil)))))
+            (funcall cc-internal nil))))
   (print
    (all-values
      (print \"start\")
@@ -61,7 +61,7 @@ Example code:
        (print x))))
   (print \"exit\")
   (let (*screamer-results*)
-    (mapcar (lambda (cc) (choice-point (funcall cc nil))) cc-list)
+    (mapcar (lambda (cc) (funcall cc nil)) cc-list)
     (print *screamer-results*)))"
   (declare (ignorable f))
   (screamer-error
