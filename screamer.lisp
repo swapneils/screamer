@@ -4527,7 +4527,7 @@ returns NIL. BOUND? is analogous to the extra-logical predicates `var' and
   "Returns true if there are finite possible values for X."
   (or (bound? x)
       (or (variable-boolean? x)
-          (variable-enumerated-domain x)
+          (not (member (variable-enumerated-domain x) '(t nil)))
           (and
            (variable-integer? x)
            (variable-lower-bound x)
@@ -8573,11 +8573,11 @@ VALUES can be either a vector or a list designator."
     ;; some compilers expand to MACROLETs
     (do* ((curr-vars variables new-vars)
           ;; Get the dependencies of curr-vars
-          (deps (mapcar (lambda (v)
-                          ;; Collect the dependencies
-                          (when (variable? v)
-                            (variable-dependencies v)))
-                        curr-vars)))
+          (deps (mappend (lambda (v)
+                           ;; Collect the dependencies
+                           (when (variable? v)
+                             (variable-dependencies v)))
+                         curr-vars)))
          ;; When there are no variables to get dependencies of, leave
          ((not curr-vars) variables)
       ;; Filter out dependencies that are already tracked
@@ -8585,7 +8585,16 @@ VALUES can be either a vector or a list designator."
       (setf new-vars (set-difference deps variables))
       ;; Add each layer of dependencies to the start of the variable list
       (setf variables (append new-vars variables))))
-  variables)
+  ;; Remove any undesired elements creeping in from mistakes in variable
+  ;; initialization
+  (setf variables (remove-if-not #'variable? (remove-duplicates variables)))
+  ;; Move any unbounded variables to the end of the forcing list
+  ;; in case they can be constrained by forcing the other variables.
+  ;; FIXME: This requires perfect type inference, otherwise we may
+  ;; force a value early which can't be fulfilled by the unbounded
+  ;; variables.
+  ;; (sort variables (lambda (a b) (and (not (bounded? b)) (bounded? a))))
+  )
 
 (defun variables-in (x)
   ;; Get initial variable list from `x'
