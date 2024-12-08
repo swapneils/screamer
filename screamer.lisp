@@ -5814,7 +5814,8 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (*-rule-up x y z) (*-rule-down x z y)) y)
              (attach-noticer!
-              #'(lambda () (*-rule-up x y z) (*-rule-down x y z)) z)
+              #'(lambda () (*-rule-up x y z) (*-rule-down x y z)) z
+              :dependencies (list x y))
              z))))
 
 (defun minv2 (x y)
@@ -5847,7 +5848,8 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (max-rule-up z x y) (max-rule-down z x y)) y)
              (attach-noticer!
-              #'(lambda () (max-rule-down z x y) (max-rule-down z y x)) z)
+              #'(lambda () (max-rule-down z x y) (max-rule-down z y x)) z
+              :dependencies (list x y))
              z))))
 
 ;;; Lifted Type Functions (KNOWN? optimized)
@@ -6354,7 +6356,8 @@ vector."
               #'(lambda ()
                   (cond ((variable-true? z) (assert!-memberv x sequence))
                         ((variable-false? z) (assert!-notv-memberv x sequence))))
-              z)
+              z
+              :dependencies (list x))
              z))))
 
 ;;; Lifted Arithmetic Comparison Functions (Two argument optimized)
@@ -6381,7 +6384,8 @@ vector."
               #'(lambda ()
                   (cond ((variable-true? z) (assert!-=v2 x y))
                         ((variable-false? z) (assert!-/=v2 x y))))
-              z)
+              z
+              :dependencies (list x y))
              z))))
 
 (defun <=v2 (x y)
@@ -6406,7 +6410,8 @@ vector."
               #'(lambda ()
                   (cond ((variable-true? z) (assert!-<=v2 x y))
                         ((variable-false? z) (assert!-<v2 y x))))
-              z)
+              z
+              :dependencies (list x y))
              z))))
 
 (defun <v2 (x y)
@@ -6431,7 +6436,8 @@ vector."
               #'(lambda ()
                   (cond ((variable-true? z) (assert!-<v2 x y))
                         ((variable-false? z) (assert!-<=v2 y x))))
-              z)
+              z
+              :dependencies (list x y))
              z))))
 
 (defun /=v2 (x y)
@@ -6456,7 +6462,8 @@ vector."
               #'(lambda ()
                   (cond ((variable-true? z) (assert!-/=v2 x y))
                         ((variable-false? z) (assert!-=v2 x y))))
-              z)
+              z
+              :dependencies (list x y))
              z))))
 
 ;;; Lifted NOTV, ANDV and ORV
@@ -6508,7 +6515,8 @@ boolean."
                             ((and (= count 1) (variable-false? z))
                              (dolist (x xs)
                                (unless (variable-true? x) (restrict-false! x))))))
-                  z)
+                  z
+                  :dependencies xs)
                  (dolist (x xs)
                    (let ((x x))
                      (attach-noticer!
