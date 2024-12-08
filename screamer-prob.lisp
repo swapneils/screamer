@@ -9,6 +9,4 @@
           a-boolean-prob
           an-integer-between-prob
           a-member-of-prob
-          sample
-          sample-once
           state-transition))

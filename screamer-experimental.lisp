@@ -104,6 +104,8 @@ Example code:
 (export '(collect-trail
           pure-values
           pure-one-value
+          sample
+          sample-once
           sample-optimizing
           normalize-probabilities
           factor-prob
