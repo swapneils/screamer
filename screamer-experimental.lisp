@@ -102,6 +102,8 @@ Example code:
 
 
 (export '(collect-trail
+          bounded?
+          grounded?
           pure-values
           pure-one-value
           sample
