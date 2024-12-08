@@ -4599,10 +4599,21 @@ domain includes structures that themselves contain variables."
 a freshly consed copy of the tree with all variables dereferenced.
 Otherwise returns the value of X."
   (let ((x (value-of x)))
-    (cond ((consp x) (cached-cons (apply-substitution (car x))
+    (typecase x
+      (cons (cached-cons (apply-substitution (car x))
                                   (apply-substitution (cdr x))))
-          ((vectorp x) (map 'vector #'apply-substitution x))
-          (t x))))
+      (vector (map 'vector #'apply-substitution x))
+      (array (flet ((map-arr (arr f)
+                      (dotimes (idx (array-total-size arr))
+                        (setf (row-major-aref arr idx)
+                              (funcall f (row-major-aref arr idx))))
+                      arr))
+               (map-arr (copy-array x) #'apply-substitution)))
+      (hash-table
+       (let ((x (copy-hash-table x)))
+         (maphash (lambda (k v) (setf (gethash k x) (apply-substitution v))) x)
+         x))
+      (otherwise x))))
 
 (defun occurs-in? (x value)
   ;; NOTE: X must be a variable such that (EQ X (VALUE-OF X)).
@@ -8651,6 +8662,18 @@ VALUES can be either a vector or a list designator."
          (cons (append (variables-in (car x))
                        (variables-in (cdr x))))
          (vector (apply #'append (map 'list #'variables-in x)))
+         (array (flet ((mappend-arr (arr f)
+                         (let (coll)
+                           (dotimes (idx (array-total-size arr))
+                             (appendf coll (funcall f (row-major-aref arr idx))))
+                           coll)))
+                  (mappend-arr x #'variables-in)))
+         (hash-table (let (coll)
+                       (maphash (lambda (k v)
+                                  (declare (ignore k))
+                                  (appendf coll (variables-in v)))
+                                x)
+                       coll))
          (variable (cached-list x))
          (otherwise nil))))
 
