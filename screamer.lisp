@@ -3873,7 +3873,7 @@ either a list or a vector."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'sample))
 
-(cl:defun sample (source &key count)
+(cl:defun sample (source &key count (stop nil stop-supplied) (test 'eql))
   "Continuously samples random values from SOURCE.
 
 If SOURCE is a list, it is a plist where the keys are possible
@@ -3904,7 +3904,7 @@ similar form."
    "SAMPLE is a nondeterministic function. As such, it must be~%~
    called only from a nondeterministic context."))
 
-(cl:defun sample-nondeterministic (continuation source &key count)
+(cl:defun sample-nondeterministic (continuation source &key count (stop nil stop-supplied) (test 'eql))
   (declare (function continuation) (type (or (integer 0) null) count))
   (s:nest
    (flet ((normalize (d psum)
@@ -3952,11 +3952,14 @@ similar form."
                  (release-list probs)
                  ;; Return a 1-element list to match the format of
                  ;; function `source's
-                 (list (nth index source)))))))
-     (declare (inline sample-internal)))
+                 (list (nth index source))))))
+          (check-stop (val) (and stop-supplied (funcall test val stop))))
+     (declare (inline sample-internal check-stop)))
+   (block screamer-sample-block)
    ;; Syntax sugar for updating probabilities and calling CONTINUATION
    (macrolet ((call-continuation (cont inp)
                 `(progn
+                   (when (check-stop ,inp) (return-from screamer-sample-block))
                    (trail-prob nil (* (current-probability)
                                       (second ,inp)))
                    (funcall ,cont (first ,inp))))))
