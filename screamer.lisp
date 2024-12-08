@@ -78,6 +78,10 @@ to DEFPACKAGE, and automatically injects two additional options:
      (cl:defun ,function-name ,lambda-list ,@body)
      (eval-when (:compile-toplevel) (compile ',function-name))))
 
+(defmacro-compile-time define-condition-compile-time (name (&rest parent-types) (&rest slot-specs) &body options)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (define-condition ,name ,parent-types ,slot-specs ,@options)))
+
 (defparameter-compile-time *screamer-version* (asdf:component-version (asdf:find-system :screamer))
   "The version of Screamer which is loaded.")
 
@@ -301,9 +305,19 @@ in comparison to `cl:mapcar'"
                          (:predicate nondeterministic-function?-internal))
   function)
 
+(define-condition-compile-time screamer-error (error)
+    ((message :initarg :message :initform nil))
+  (:documentation "Class for errors thrown by Screamer.")
+  (:report (lambda (condition stream)
+             (format stream
+                     "Encountered Screamer error:~2%~A"
+                     (format nil (slot-value condition 'message))))))
+
 (defun-compile-time screamer-error (header &rest args)
   (apply
    #'error
+   'screamer-error
+   :message
    (concatenate
     'string
     header
