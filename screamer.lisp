@@ -6730,30 +6730,9 @@ following alternatives provided with Screamer:
 Future implementation of Screamer may provide additional forcing and ordering
 functions."
   (funcall-nondeterministic
-   (value-of ordering-force-function) (variables-in (value-of arguments)))
+   (value-of ordering-force-function)
+   (get-variable-dependency-closure (variables-in (value-of arguments))))
   (apply-substitution arguments))
-
-(cl:defun get-variable-dependency-closure (variables)
-  (setf variables (remove-duplicates variables))
-  (let ((new-vars nil))
-    ;; NOTE: This is a kludge to avoid `loop', which
-    ;; some compilers expand to MACROLETs
-    (do* ((curr-vars variables new-vars)
-          ;; Get the dependencies of curr-vars
-          (deps (mapcan (lambda (v)
-                          ;; Collect the dependencies
-                          (if (variable? v)
-                              (variable-dependencies v)
-                              nil))
-                        curr-vars)))
-         ;; When there are no variables to get dependencies of, leave
-         ((not curr-vars) variables)
-      ;; Filter out dependencies that are already tracked
-      ;; NOTE: Kludged this out of
-      (setf new-vars (set-difference deps variables))
-      ;; Add each layer of dependencies to the start of the variable list
-      (setf variables (concatenate 'list new-vars variables))))
-  variables)
 
 (defun linear-force (x)
   "Returns X if it is not a variable. If X is a bound variable then returns
@@ -8508,9 +8487,33 @@ VALUES can be either a vector or a list designator."
 
 ;;; Search Control
 
+(cl:defun get-variable-dependency-closure (variables)
+  (declare (list variables))
+  (setf variables (remove-duplicates variables))
+  (let ((new-vars nil))
+    ;; NOTE: This is a kludge to avoid `loop', which
+    ;; some compilers expand to MACROLETs
+    (do* ((curr-vars variables new-vars)
+          ;; Get the dependencies of curr-vars
+          (deps (mapcar (lambda (v)
+                          ;; Collect the dependencies
+                          (when (variable? v)
+                            (variable-dependencies v)))
+                        curr-vars)))
+         ;; When there are no variables to get dependencies of, leave
+         ((not curr-vars) variables)
+      ;; Filter out dependencies that are already tracked
+      ;; NOTE: Kludged
+      (setf new-vars (set-difference deps variables))
+      ;; Add each layer of dependencies to the start of the variable list
+      (setf variables (append new-vars variables))))
+  variables)
+
 (defun variables-in (x)
+  ;; Get initial variable list from `x'
   (typecase x
-    (cons (append (variables-in (car x)) (variables-in (cdr x))))
+    (cons (append (variables-in (car x))
+                  (variables-in (cdr x))))
     (variable (cached-list x))
     (otherwise nil)))
 
