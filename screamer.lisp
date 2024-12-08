@@ -8094,6 +8094,15 @@ Works on nested sequences which potentially contain variables, e.g. (all-differe
             ((and (consp x) (consp y))
              (known?-equalv (car x) (car y))
              (known?-equalv (cdr x) (cdr y)))
+            ((and (s:sequencep x) (s:sequencep y) (= (length x) (length y)))
+             (every #'known?-equalv x y))
+            ((and (arrayp x) (arrayp y) (equal (array-dimensions x) (array-dimensions y)))
+             ;; If they have the same shape, equate each element
+             (every (lambda (idx) (known?-equalv (row-major-aref x idx) (row-major-aref y idx)))
+                    (iota (array-total-size x))))
+            ((and (hash-table-p x) (hash-table-p y) (equal (hash-table-keys x) (hash-table-keys y)))
+             ;; If they have the same keys, equate the value of each key
+            (every (lambda (k) (known?-equalv (gethash k x) (gethash k y))) (hash-table-keys x)))
             (t (equal x y)))))
 
 (defun assert!-equalv (x y)
@@ -8115,6 +8124,12 @@ Works on nested sequences which potentially contain variables, e.g. (all-differe
            (assert!-equalv (cdr x) (cdr y)))
           ((and (s:sequencep x) (s:sequencep y) (= (length x) (length y)))
            (cl:map nil #'assert!-equalv x y))
+          ((and (arrayp x) (arrayp y) (equal (array-dimensions x) (array-dimensions y)))
+           ;; If they have the same shape, assert every element of each array to be equalv.
+           (cl:map nil (lambda (idx) (assert!-equalv (row-major-aref x idx) (row-major-aref y idx))) (iota (array-total-size x))))
+          ((and (hash-table-p x) (hash-table-p y) (equal (hash-table-keys x) (hash-table-keys y)))
+           ;; If they have the same keys, assert every element of each hash table to be the same
+           (cl:map nil (lambda (k) (assert!-equalv (gethash k x) (gethash k y))) (hash-table-keys x)))
           (t (fail)))))
 
 (defun known?-notv-equalv (x y) (one-value (progn (assert!-equalv x y) nil) t))
