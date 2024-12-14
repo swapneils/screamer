@@ -65,7 +65,7 @@
   :depends-on ("screamer/core"
                "screamer/prob"))
 
-(defsystem :screamer-experimental
+(defsystem :screamer/experimental
   :serial t
   :licence "MIT"
   :description "Experimental Screamer features"
