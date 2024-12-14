@@ -2950,6 +2950,20 @@ for purposes of result collection.
 Used in other methods (like `call/cc') to maintain stable
 backtracking/collection with nonstandard control flows.")
 
+(defun copy-output-value (value)
+  (etypecase value
+    (cons (copy-tree value))
+    (hash-table (let ((ret (copy-hash-table value)))
+                  (maphash (lambda (k v) (setf (gethash k ret) (copy-output-value v))) ret)
+                  ret))
+    (sequence (let ((ret (copy-seq value)))
+                (dotimes (idx (length ret))
+                  (setf (elt ret idx)
+                        (copy-output-value (elt ret idx))))
+                ret))
+    (structure-object (copy-structure value))
+    (t value)))
+
 (defmacro-compile-time all-values (&body body)
   "Evaluates BODY as an implicit PROGN and returns a list of all of the
 nondeterministic values yielded by the it.
@@ -2975,7 +2989,7 @@ ALL-VALUES is analogous to the `bagof' primitive in Prolog."
            (*last-value-cons* nil))
        (for-effects
          (let* ((,value (progn ,@body))
-                (,value (if (consp ,value) (copy-tree ,value) ,value)))
+                (,value (copy-output-value ,value)))
            (global (if (null ,values)
                        (setf *last-value-cons* (cached-list ,value)
                              ,values *last-value-cons*)
@@ -3018,7 +3032,7 @@ sum of the probabilities returned will be less than 1."
        ;; Process BODY
        (for-effects
          (let* ((,value (progn ,@body))
-                (,value (if (consp ,value) (copy-tree ,value) ,value)))
+                (,value (copy-output-value ,value)))
            (global (if (null ,values)
                        (setf *last-value-cons* (cached-list
                                                 (cached-list ,value
@@ -3138,7 +3152,7 @@ N."
            (unless (zerop ,counter)
              (global
                (let* ((,value (progn ,@body))
-                      (,value (if (consp ,value) (copy-tree ,value) ,value)))
+                      (,value (copy-output-value ,value)))
                  (decf ,counter)
                  ;; Add the value to the collected list
                  (if (null ,value-list)
@@ -3170,7 +3184,7 @@ See the docstring of `ALL-VALUES-PROB' for more details."
          (for-effects
            (unless (zerop ,counter)
              (let* ((,value (progn ,@body))
-                    (,value (if (consp ,value) (copy-tree ,value) ,value))
+                    (,value (copy-output-value ,value))
                     (,value (cached-list ,value
                                          (current-probability *trail*))))
                (decf ,counter)
