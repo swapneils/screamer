@@ -243,6 +243,11 @@ Use this to deal with floating-point errors, if necessary.")
   `(the list (cached-list*-internal ,v ,@vals)))
 
 (defun-compile-time release-list (l)
+  (declare (list l)
+           (optimize (speed 3)
+                     (space 3)
+                     (safety 0)
+                     (debug 0)))
   (iter:iter
     (iter:for x initially l then y)
     (iter:for y = (cdr x))
@@ -3967,7 +3972,7 @@ similar form."
    (flet ((sample-internal (source)
             (typecase source
               ((or function nondeterministic-function)
-               (let* ((ret nil) (local-cont (lambda (inp) (push inp ret))))
+               (let* ((ret nil) (local-cont (lambda (inp) (cached-push inp ret))))
                  (catch '%fail
                    (funcall-nondeterministic-nondeterministic local-cont source))
                  ;; Fail unless we have some outputs
@@ -6876,7 +6881,7 @@ Future implementation of Screamer may provide additional forcing and ordering
 functions."
   (funcall-nondeterministic
    (value-of ordering-force-function)
-   (get-variable-dependency-closure (variables-in (value-of arguments))))
+   (variables-in (value-of arguments)))
   (apply-substitution arguments))
 
 (defun linear-force (x)
@@ -6929,10 +6934,11 @@ in the process of determining a good search order."
 (defun static-ordering-internal (variables force-function)
   (when variables
       (let ((variable (value-of (first variables))))
-        (cond ((variable? variable)
-               (funcall-nondeterministic force-function variable)
-               (static-ordering-internal variables force-function))
-              (t (static-ordering-internal (rest variables) force-function))))))
+        (etypecase variable
+          (variable
+           (funcall-nondeterministic force-function variable)
+           (static-ordering-internal variables force-function))
+          (t (static-ordering-internal (rest variables) force-function))))))
 
 (defun static-ordering (force-function)
   "Returns an ordering force function based on FORCE-FUNCTION.
@@ -6957,9 +6963,8 @@ sufficient hooks for the user to define her own force functions.)"
   ;; NOTE: This closure will heap cons.
   (let ((force-function (value-of force-function)))
     #'(lambda (variables)
-        (setf variables (get-variable-dependency-closure variables))
         ;; Force the dependencies and then the target variables
-        (static-ordering-internal variables force-function))))
+        (static-ordering-internal (get-variable-dependency-closure variables) force-function))))
 
 (defun known?-constraint (f polarity? x)
   (let ((f (value-of f)))
@@ -7019,13 +7024,12 @@ sufficient hooks for the user to define her own force functions.)"
               (run-noticers unassigned-variable))))))
 
 (defun a-tuple (variables variable value)
-  (if (null variables)
-      nil
-      (cached-cons (cond ((eq (first variables) variable) value)
-                         ((variable? (first variables))
-                          (a-member-of (variable-enumerated-domain (first variables))))
-                         (t (first variables)))
-                   (a-tuple (rest variables) variable value))))
+  (unless (null variables)
+    (cached-cons (cond ((eq (first variables) variable) value)
+                       ((variable? (first variables))
+                        (a-member-of (variable-enumerated-domain (first variables))))
+                       (t (first variables)))
+                 (a-tuple (rest variables) variable value))))
 
 (defun propagate-ac (predicate polarity? variables)
   (unless (some #'(lambda (variable)
@@ -7034,23 +7038,17 @@ sufficient hooks for the user to define her own force functions.)"
                 variables)
     (dolist (variable variables)
       ;; NOTE: Could do less consing if had LOCAL DELETE-IF-NOT.
-      (if (variable? variable)
-          (let ((new-enumerated-domain
-                  (if polarity?
-                      (remove-if-not
-                       #'(lambda (value)
-                           (possibly?
-                             ;; NOTE: Consing.
-                             (apply predicate (a-tuple variables variable value))))
-                       (variable-enumerated-domain variable))
-                      (remove-if
-                       #'(lambda (value)
-                           (possibly?
-                             ;; NOTE: Consing.
-                             (apply predicate (a-tuple variables variable value))))
-                       (variable-enumerated-domain variable)))))
-            (if (set-enumerated-domain! variable new-enumerated-domain)
-                (run-noticers variable)))))))
+      (when (variable? variable)
+        (let* ((pred-func #'(lambda (value)
+                              (possibly?
+                                ;; NOTE: Consing.
+                                (apply predicate (a-tuple variables variable value)))))
+               (new-enumerated-domain
+                 (if polarity?
+                     (remove-if-not pred-func (variable-enumerated-domain variable))
+                     (remove-if pred-func (variable-enumerated-domain variable)))))
+          (if (set-enumerated-domain! variable new-enumerated-domain)
+              (run-noticers variable)))))))
 
 (defun assert!-constraint-gfc (predicate polarity? variables)
   (let ((predicate (value-of predicate))
@@ -7064,7 +7062,7 @@ sufficient hooks for the user to define her own force functions.)"
            function"))
     (dolist (variable variables)
       (unless (bound? variable)
-        (if unassigned-variable (setf multiple-unassigned-variables? t))
+        (when unassigned-variable (setf multiple-unassigned-variables? t))
         (setf unassigned-variable variable)))
     (cond
       (multiple-unassigned-variables?
