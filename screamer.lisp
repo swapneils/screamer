@@ -7219,7 +7219,7 @@ restricted to be consistent with other arguments."
            )
           (apply f (mapcar #'value-of arguments))
           (let ((z (make-variable)))
-            (attach-noticer! nil z :dependencies arguments)
+            (attach-noticer! nil z :dependencies (variables-in arguments))
             (assert!-constraint
              #'(lambda (&rest x) (equal (first x) (apply f (rest x))))
              t
@@ -7229,8 +7229,7 @@ restricted to be consistent with other arguments."
                #'(lambda ()
                    (when (every #'bound? arguments)
                        (assert!-equalv z (apply f (mapcar #'value-of arguments)))))
-               argument
-               :dependencies (list z)))
+               argument))
             z)))))
 
 ;;; Lifted Arithmetic Functions
