@@ -9090,3 +9090,19 @@ This is useful for creating patterns to be unified with other structures."
       (assert! (not (=v c 2)))
       (print c)
       (solution (list c b) (static-ordering #'linear-force)))))
+;;; FIXME: Some macroexpansion cases seem to be failing since the
+;;; CPS code can't handle cases that the walker can. Not sure if the
+;;; problem is the disparity itself or an issue in the walker that
+;;; keeps it from properly processing these forms
+;;; Example:
+(serapeum:comment
+  (all-values
+    (local
+      (let* ((b (an-integer-between 1 2)) c)
+        (iterate toplevel (for i from 1 to 2)
+          (setf c (screamer::pure-values (b) b))
+          (iterate (for j from 1 to 2)
+            (in toplevel
+                (collect (* (screamer:pure-one-value (i j)
+                              (min i j))
+                            c)))))))))
