@@ -884,6 +884,16 @@
     (assert! (memberv x #(3 4 5)))
     (known? (andv (>=v x 3) (<=v x 5)))))
 
+(defun test71 () ;; Values don't get mangled when iterating and returning lists
+  (known?
+   (equal
+    (all-values
+      (local
+        (iter:iterate (iter:for i from 1 to 2)
+          (let ((c (an-integer-between 1 2)))
+            (iter:collect (list i c))))))
+    '(((1 1) (2 1)) ((1 1) (2 2)) ((1 2) (2 1)) ((1 2) (2 2))))))
+
 ;;; This is the classic Screamer test entry point.
 ;;; screamer-tests::prime-ordeal runs the same tests under Stefil.
 (defun prime-ordeal ()
@@ -954,6 +964,7 @@
   (unless (test68) (format t "~% Test 68 failed") (setf bug? t))
   (unless (test69) (format t "~% Test 69 failed") (setf bug? t))
   (unless (test70) (format t "~% Test 70 failed") (setf bug? t))
+  (unless (test71) (format t "~% Test 71 failed") (setf bug? t))
   (if bug? (error "Screamer has a bug")))
  t)
 

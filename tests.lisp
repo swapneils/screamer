@@ -151,7 +151,8 @@
   (is (primordial::test67))
   (is (primordial::test68))
   (is (primordial::test69))
-  (is (primordial::test70)))
+  (is (primordial::test70))
+  (is (primordial::test71)))
 
 (deftest test-trail ()
   (is (equal '(t t t)
@@ -223,3 +224,7 @@
                 (linear-force (foo '(nil t 3 4 -1) '(1 2 3 t))))))
       (is (or (equal '(3 t) xs)
               (equal '(t 3) xs))))))
+
+(deftest test-upper-bounding-failures ()
+  (let ((screamer::*screamer-max-failures* 20))
+    (is (not (possibly? (> (an-integer-below 20) 20))))))
