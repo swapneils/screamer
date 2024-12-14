@@ -9058,3 +9058,22 @@ This is useful for creating patterns to be unified with other structures."
 ;;; form fixes the issue.
 ;;; NOTE: Mitigated for now by using `copy-tree' for any `consp' results
 ;;; in aggregation forms.
+;;;
+;;; FIXME: There is a bug somewhere in the assert-not code which causes
+;;; failures even though a variable has valid values in its enumerated
+;;; domain.
+;;; NOTE: Presumably this would go away automatically once we've replaced
+;;; noticers with types?
+;;; Example:
+(serapeum:comment
+  (all-values
+    (let* ((b (template '(1 2 ?a ?a 4)))
+           (c (applyv #'+v b)))
+      (assert! (integerpv (third b)))
+      (assert! (<=v 1 c 3))
+      (assert! (integerpv c))
+      (print c)
+      ;; This unilaterally fails
+      (assert! (not (=v c 2)))
+      (print c)
+      (solution (list c b) (static-ordering #'linear-force)))))
