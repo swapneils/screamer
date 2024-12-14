@@ -303,7 +303,8 @@ in comparison to `cl:mapcar'"
 
 (defmacro-compile-time choice-point-internal (form)
   `(catch '%fail
-     (let ((*nondeterministic-context* (or *nondeterministic-context* (s:dict))))
+     (let* ((toplevel (typep *nondeterministic-context* '(not null)))
+            (*nondeterministic-context* (or *nondeterministic-context* (s:dict))))
        (unwind-protect ,form
          (unwind-trail-to trail-pointer)))))
 
