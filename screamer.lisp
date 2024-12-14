@@ -8664,7 +8664,7 @@ VALUES can be either a vector or a list designator."
 
 ;;; Search Control
 
-(cl:defun get-variable-dependency-closure (variables)
+(cl:defun get-variable-dependency-closure (variables &key (complete nil))
   (declare (list variables))
   (setf variables (remove-duplicates variables))
   (let ((new-vars nil))
@@ -8677,12 +8677,22 @@ VALUES can be either a vector or a list designator."
                            (when (variable? v)
                              (let ((bounded-var (bounded? v))
                                    (v-deps (variable-dependencies v)))
-                               (if bounded-var
-                                   ;; If v is bounded, only add bounded dependencies,
-                                   ;; to minimize infinite loops
-                                   (remove-if-not #'bounded? v-deps)
-                                   ;; If v isn't bounded, add all dependencies for
-                                   ;; correctness
+                               (if (and bounded-var (not complete))
+                                   (progn
+                                     ;; If v is bounded, only add bounded dependencies,
+                                     ;; to minimize infinite loops
+                                     (remove-if-not #'bounded? v-deps)
+                                     ;; Return dependencies only if they cumulatively
+                                     ;; have fewer possibilities than the enumerated
+                                     ;; domain of `v'.
+                                     (unless (< (length (variable-enumerated-domain v))
+                                                (reduce #'* v-deps
+                                                        :key (serapeum:op
+                                                               (let ((dom (variable-enumerated-domain _)))
+                                                                 (etypecase dom (list (length dom)) (t 1))))))
+                                       v-deps))
+                                   ;; If asked for the complete closure or v is not
+                                   ;; known to be bounded, return all dependencies
                                    v-deps))))
                          curr-vars)))
          ;; When there are no variables to get dependencies of, leave
