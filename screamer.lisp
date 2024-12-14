@@ -2975,7 +2975,7 @@ ALL-VALUES is analogous to the `bagof' primitive in Prolog."
            (*last-value-cons* nil))
        (for-effects
          (let* ((,value (progn ,@body))
-                (,value (if (consp ,value) (copy-list ,value) ,value)))
+                (,value (if (consp ,value) (copy-tree ,value) ,value)))
            (global (if (null ,values)
                        (setf *last-value-cons* (cached-list ,value)
                              ,values *last-value-cons*)
@@ -3018,7 +3018,7 @@ sum of the probabilities returned will be less than 1."
        ;; Process BODY
        (for-effects
          (let* ((,value (progn ,@body))
-                (,value (if (consp ,value) (copy-list ,value) ,value)))
+                (,value (if (consp ,value) (copy-tree ,value) ,value)))
            (global (if (null ,values)
                        (setf *last-value-cons* (cached-list
                                                 (cached-list ,value
@@ -3138,7 +3138,7 @@ N."
            (unless (zerop ,counter)
              (global
                (let* ((,value (progn ,@body))
-                      (,value (if (consp ,value) (copy-list ,value) ,value)))
+                      (,value (if (consp ,value) (copy-tree ,value) ,value)))
                  (decf ,counter)
                  ;; Add the value to the collected list
                  (if (null ,value-list)
@@ -3170,7 +3170,7 @@ See the docstring of `ALL-VALUES-PROB' for more details."
          (for-effects
            (unless (zerop ,counter)
              (let* ((,value (progn ,@body))
-                    (,value (if (consp ,value) (copy-list ,value) ,value))
+                    (,value (if (consp ,value) (copy-tree ,value) ,value))
                     (,value (cached-list ,value
                                          (current-probability *trail*))))
                (decf ,counter)
@@ -9035,5 +9035,5 @@ This is useful for creating patterns to be unified with other structures."
 ;;;
 ;;; NOTE: Confirmed that using `copy-list' at the end of an `all-values'
 ;;; form fixes the issue.
-;;; NOTE: Mitigated for now by using `copy-list' for any `consp' results
+;;; NOTE: Mitigated for now by using `copy-tree' for any `consp' results
 ;;; in aggregation forms.
