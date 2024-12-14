@@ -305,6 +305,7 @@ in comparison to `cl:mapcar'"
   `(catch '%fail
      (let* ((toplevel (typep *nondeterministic-context* '(not null)))
             (*nondeterministic-context* (or *nondeterministic-context* (s:dict))))
+       (declare (ignorable toplevel))
        (unwind-protect ,form
          (unwind-trail-to trail-pointer)))))
 
