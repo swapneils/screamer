@@ -8675,7 +8675,15 @@ VALUES can be either a vector or a list designator."
           (deps (mappend (lambda (v)
                            ;; Collect the dependencies
                            (when (variable? v)
-                             (variable-dependencies v)))
+                             (let ((bounded-var (bounded? v))
+                                   (v-deps (variable-dependencies v)))
+                               (if bounded-var
+                                   ;; If v is bounded, only add bounded dependencies,
+                                   ;; to minimize infinite loops
+                                   (remove-if-not #'bounded? v-deps)
+                                   ;; If v isn't bounded, add all dependencies for
+                                   ;; correctness
+                                   v-deps))))
                          curr-vars)))
          ;; When there are no variables to get dependencies of, leave
          ((not curr-vars) variables)
