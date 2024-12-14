@@ -332,22 +332,22 @@ in comparison to `cl:mapcar'"
   function)
 
 (define-condition-compile-time screamer-error (error)
-    ((message :initarg :message :initform nil))
+    ((message :initarg :message :initform nil)
+     (args :initarg :args :initform nil))
   (:documentation "Class for errors thrown by Screamer.")
   (:report (lambda (condition stream)
              (format stream
                      "Encountered Screamer error:~2%~A"
-                     (format nil (slot-value condition 'message))))))
+                     (apply #'format nil
+                            (slot-value condition 'message)
+                            (slot-value condition 'args))))))
 
 (defun-compile-time screamer-error (header &rest args)
-  (apply
-   #'error
-   'screamer-error
-   :message
-   (concatenate
-    'string
-    header
-    "~2%There are eight types of nondeterministic contexts:
+  (error 'screamer-error
+         :message (concatenate
+                   'string
+                   header
+                   "~2%There are eight types of nondeterministic contexts:
 
   1. the body of a function defined with SCREAMER::DEFUN
   2. the body of a FOR-EFFECTS macro invocation
@@ -360,7 +360,8 @@ in comparison to `cl:mapcar'"
 
 Note that the default forms of &OPTIONAL and &KEY arguments and the
 initialization forms of &AUX variables are always deterministic
-contexts even though they may appear inside a SCREAMER::DEFUN.") args))
+contexts even though they may appear inside a SCREAMER::DEFUN.")
+         :args args))
 
 (defun-compile-time get-function-record (function-name)
   (or (gethash function-name *function-record-table*)
