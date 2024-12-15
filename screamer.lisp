@@ -9103,6 +9103,6 @@ This is useful for creating patterns to be unified with other structures."
           (setf c (screamer::pure-values (b) b))
           (iterate (for j from 1 to 2)
             (in toplevel
-                (collect (* (screamer:pure-one-value (i j)
+                (collect (* (screamer::pure-one-value (i j)
                               (min i j))
                             c)))))))))
