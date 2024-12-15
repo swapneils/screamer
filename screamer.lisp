@@ -1409,7 +1409,7 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
           ;; Expand the body with the new lexical macroexpansions
           `(let nil ,@(mapcar (rcurry #'expand-lexical-environments environment) body)))
          ;; If an ordinary macro, expand it step by step
-         ((guard (list* form-name _)
+         ((trivia:guard (list* form-name _)
                  (valid-macro? form-name environment))
           (let ((*macroexpand-hook* #'funcall))
             (expand-lexical-environments (macroexpand-1 form environment) environment)))
@@ -9227,6 +9227,11 @@ This is useful for creating patterns to be unified with other structures."
 ;;; them into the all-values works with both local and global, with and
 ;;; without nondeterminism. Further evidence that the issue is in
 ;;; macroexpansion?
+;;; NOTE: Making `expand-lexical-environments' do nothing didn't solve
+;;; the issue, so this is actually arising somewhere else in our code
+;;; as an incompatibility with SBCL (and potentially other implementation-
+;;; specific LOOP-expansions). Will need to continue using non-default
+;;; loop constructs for the moment to avoid breakage.
 (serapeum:comment
   (all-values (local (loop for i from 0 below 4 when (evenp i) collect i))))
 ;;; NOTE: The `iterate' version of the above seems to run fine, both with and
