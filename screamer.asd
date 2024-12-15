@@ -36,7 +36,8 @@
   :version "5.1.0"
   :depends-on ("alexandria"
                "serapeum"
-               "iterate")
+               "iterate"
+               "trivia")
   :components
   ((:file "package")
    (:file "screamer")))

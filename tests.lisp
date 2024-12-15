@@ -228,3 +228,27 @@
 (deftest test-upper-bounding-failures ()
   (let ((screamer::*screamer-max-failures* 20))
     (is (not (possibly? (> (an-integer-below 20) 20))))))
+
+(deftest test-macrolet-stays-in-lexical-environment ()
+  (is (all-values
+        (let ((hi 3))
+          (declare (ignorable hi))
+          (symbol-macrolet ((hi 2))
+            hi)))
+      '(2))
+  (is (all-values
+        (let ((hi 3))
+          (declare (ignorable hi))
+          (symbol-macrolet ((hi 2)))
+          hi))
+      '(3))
+  (is (all-values
+        (flet ((hi (a b) (+ a b)))
+          (macrolet ((hi (a b) `(- ,a ,b)))
+            (hi 2 3))))
+      '(-1))
+  (is (all-values
+        (flet ((hi (a b) (+ a b)))
+          (macrolet ((hi (a b) `(- ,a ,b))))
+          (hi 2 3)))
+      '(5)))

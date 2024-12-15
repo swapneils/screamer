@@ -1332,116 +1332,226 @@ contexts even though they may appear inside a SCREAMER::DEFUN.")
 ;;;  Other:
 ;;;   MACRO-CALL LAMBDA-CALL SYMBOL-CALL SETF-CALL
 
+;;; TODO: Improve testing for macrolet/symbol-macrolet
+
+(defvar *screamer-macroexpansions* nil
+  "internal alist tracking lexical macros while they are expanded by `walk'")
+
+(defun-compile-time expand-lexical-environments (form &optional environment)
+  "EXPERIMENTAL
+Expands macrolet/symbol-macrolet forms and their invocations.
+Returns 2 values, a modified form to be processed by WALK and
+the updated value of `*screamer-macroexpansions*'.
+
+SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
+  ;; (print (list 'form form))
+  (let ((*screamer-macroexpansions* *screamer-macroexpansions*)
+        (walk-map-function (lambda (new-form new-form-type)
+                             (declare (ignore new-form-type))
+                             (if (equal form new-form)
+                                 ;; Avoid infinite loops
+                                 form
+                                 (expand-lexical-environments new-form environment)))))
+    (values-list
+     (list
+      (or
+       (trivia:match form
+         ;; If an empty declare form, get rid of it
+         ;; TODO: Do we need this?
+         ((list 'declare) nil)
+         ;; If a quoted form or declaration, ignore it
+         ((list* (or 'quote 'declare) _) form)
+         ;; If an empty macrolet or symbol-macrolet, ignore it
+         ((list* (or 'macrolet 'symbol-macrolet) nil body)
+          `(let nil ,@body))
+         ;; If a macrolet, expand and save the defs and expand the body.
+         ((list* 'macrolet defs body)
+          ;; Push the lexical macro definitions onto `*screamer-macroexpansions*'
+          (setf *screamer-macroexpansions*
+                (append
+                 ;; Iterate through the defs and collect their lexical definitions
+                 (iter:iter
+                   (iter:for (name args . def-body) in defs)
+                   (let* (
+                          ;; Walk def. This automatically expands it as well,
+                          ;; using the current lexical environment to do so.
+                          (new-def-let-wrapper
+                            (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
+                                  t nil nil
+                                  `(let () ,@def-body) environment))
+                          (new-def-body (nthcdr 2 new-def-let-wrapper))
+                          ;; Create macro function for def
+                          ;; FIXME: Uses EVAL!!!
+                          (replacer (eval `(lambda ,args ,@new-def-body))))
+                     ;; Collect macro function to add to tracked lexical environment
+                     (iter:collect `(,name . ,replacer))))
+                 *screamer-macroexpansions*))
+          ;; Expand the body with the new lexical macroexpansions
+          `(let nil ,@(mapcar (rcurry #'expand-lexical-environments environment) body)))
+         ;; If a symbol-macrolet, expand and save the defs and expand the body.
+         ((list* 'symbol-macrolet defs body)
+          ;; Push the lexical symbol-macro definitions onto `*screamer-macroexpansions*'
+          (setf *screamer-macroexpansions*
+                (append
+                 ;; Iterate through the defs and collect their lexical definitions
+                 (iter:iter
+                   (iter:for (name . def-body) in defs)
+                   (let* (
+                          ;; Expand def based on parent env
+                          ;; (new-def-body (mapcar (rcurry #'expand-lexical-environments environment) def-body))
+                          ;; FIXME: Currently does nothing!!!
+                          (new-def-body def-body)
+                          ;; Create macro function for def
+                          (replacer (eval `(lambda () ',@def-body))))
+                     ;; Collect labelled symbol macro function to add to tracked lexical environment
+                     (iter:collect `((symbol ,name) . ,replacer))))
+                 *screamer-macroexpansions*))
+          ;; Expand the body with the new lexical macroexpansions
+          `(let nil ,@(mapcar (rcurry #'expand-lexical-environments environment) body)))
+         ;; If an ordinary macro, expand it step by step
+         ((guard (list* form-name _)
+                 (valid-macro? form-name environment))
+          (let ((*macroexpand-hook* #'funcall))
+            (expand-lexical-environments (macroexpand-1 form environment) environment)))
+         ;; If a known lexical macro, expand it and then look at the result
+         ((trivia:guard (list* form-name form-args)
+                        (assoc form-name *screamer-macroexpansions*))
+          (let* ((match (assoc form-name *screamer-macroexpansions*))
+                 ;; Get the macroexpansion function
+                 (converter (cdr match)))
+            ;; Call the macroexpansion function on the args and look at the result
+            (expand-lexical-environments (apply converter form-args) environment)))
+         ;; If a known lexical symbol-macro, expand it and look at the result
+         ((trivia:guard (type symbol)
+                        (assoc `(symbol ,form) *screamer-macroexpansions* :test 'equal))
+          (let* ((match (assoc (list 'symbol form) *screamer-macroexpansions* :test 'equal))
+                 ;; Get the macroexpansion function
+                 (converter (cdr match)))
+            ;; (print `(known-symbol ,form match ,match))
+            (expand-lexical-environments (funcall converter) environment))))
+       ;; If the form doesn't match the lexical expansion cases, walk the form.
+       ;; Note that `walk' (seemingly?) relies on the map-function to call it
+       ;; recursively when lacking a `reduce-function', rather than calling itself,
+       ;; so the below doesn't create multiple nested recursive processes or similar.
+       ;; (and (print "surrendering") (walk walk-map-function nil t nil nil form environment))
+       (and
+        ;; (print (list "surrendering" *screamer-macroexpansions*))
+        form))
+      *screamer-macroexpansions*))))
+
 (defun-compile-time walk
     (map-function reduce-function screamer? partial? nested? form environment)
   ;; TODO: Add MACROLET walking (via trivial-environments since this can't
   ;; otherwise be done portably, with a fallback to fail on this case?)
   ;; needs work: Cannot walk MACROLET or special forms not in both CLtL1 and
   ;;             CLtL2.
-  (cond
-    ((self-evaluating? form) (funcall map-function form 'quote))
-    ((symbolp form) (funcall map-function form 'variable))
+  (multiple-value-bind (form *screamer-macroexpansions*)
+      (expand-lexical-environments form environment)
+    ;; (print (list 'lexical-env *screamer-macroexpansions*))
+   (cond
+     ((self-evaluating? form) (funcall map-function form 'quote))
+     ((symbolp form) (funcall map-function form 'variable))
 
-    ((eq (first form) 'block)
-     (walk-block
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'catch)
-     (walk-catch
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'eval-when)
-     (walk-eval-when
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'flet)
-     (walk-flet/labels
-      map-function reduce-function screamer? partial? nested? form environment
-      'flet))
-    ((eq (first form) 'function)
-     (walk-function
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'go) (walk-go map-function form))
-    ((eq (first form) 'if)
-     (walk-if map-function reduce-function screamer? partial? nested? form
-              environment))
-    ((eq (first form) 'labels)
-     (walk-flet/labels
-      map-function reduce-function screamer? partial? nested? form environment
-      'labels))
-    ((eq (first form) 'let)
-     (walk-let/let*
-      map-function reduce-function screamer? partial? nested? form environment
-      'let))
-    ((eq (first form) 'let*)
-     (walk-let/let*
-      map-function reduce-function screamer? partial? nested? form environment
-      'let*))
-    ;; needs work: This is a temporary kludge to support MCL.
-    ((and (eq (first form) 'locally) (null (fourth form)))
-     (walk map-function reduce-function screamer? partial? nested? (third form)
-           environment))
-    ((eq (first form) 'multiple-value-call)
-     (walk-multiple-value-call
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'multiple-value-prog1)
-     (walk-multiple-value-prog1
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'progn)
-     (walk-progn
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'progv)
-     (walk-progv
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'quote) (walk-quote map-function form))
-    ((eq (first form) 'return-from)
-     (walk-return-from
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'setq)
-     (walk-setq
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'tagbody)
-     (walk-tagbody
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'the)
-     (walk-the
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'throw)
-     (walk-throw
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'unwind-protect)
-     (walk-unwind-protect
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((and screamer? (eq (first form) 'for-effects))
-     (walk-for-effects
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((and screamer? (eq (first form) 'setf))
-     (walk-setf
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((and screamer? (eq (first form) 'local))
-     (let ((*local?* t))
-       (walk-progn
-        map-function reduce-function screamer? partial? nested? form
-        environment)))
-    ((and screamer? (eq (first form) 'global))
-     (let ((*local?* nil))
-       (walk-progn
-        map-function reduce-function screamer? partial? nested? form
-        environment)))
-    ((and screamer? (eq (first form) 'multiple-value-call-nondeterministic))
-     (walk-multiple-value-call-nondeterministic
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((and partial? (eq (first form) 'full)) (walk-full map-function form))
+     ((eq (first form) 'block)
+      (walk-block
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'catch)
+      (walk-catch
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'eval-when)
+      (walk-eval-when
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'flet)
+      (walk-flet/labels
+       map-function reduce-function screamer? partial? nested? form environment
+       'flet))
+     ((eq (first form) 'function)
+      (walk-function
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'go) (walk-go map-function form))
+     ((eq (first form) 'if)
+      (walk-if map-function reduce-function screamer? partial? nested? form
+               environment))
+     ((eq (first form) 'labels)
+      (walk-flet/labels
+       map-function reduce-function screamer? partial? nested? form environment
+       'labels))
+     ((eq (first form) 'let)
+      (walk-let/let*
+       map-function reduce-function screamer? partial? nested? form environment
+       'let))
+     ((eq (first form) 'let*)
+      (walk-let/let*
+       map-function reduce-function screamer? partial? nested? form environment
+       'let*))
+     ;; needs work: This is a temporary kludge to support MCL.
+     ((and (eq (first form) 'locally) (null (fourth form)))
+      (walk map-function reduce-function screamer? partial? nested? (third form)
+            environment))
+     ((eq (first form) 'multiple-value-call)
+      (walk-multiple-value-call
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'multiple-value-prog1)
+      (walk-multiple-value-prog1
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'progn)
+      (walk-progn
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'progv)
+      (walk-progv
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'quote) (walk-quote map-function form))
+     ((eq (first form) 'return-from)
+      (walk-return-from
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'setq)
+      (walk-setq
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'tagbody)
+      (walk-tagbody
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'the)
+      (walk-the
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'throw)
+      (walk-throw
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((eq (first form) 'unwind-protect)
+      (walk-unwind-protect
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((and screamer? (eq (first form) 'for-effects))
+      (walk-for-effects
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((and screamer? (eq (first form) 'setf))
+      (walk-setf
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((and screamer? (eq (first form) 'local))
+      (let ((*local?* t))
+        (walk-progn
+         map-function reduce-function screamer? partial? nested? form
+         environment)))
+     ((and screamer? (eq (first form) 'global))
+      (let ((*local?* nil))
+        (walk-progn
+         map-function reduce-function screamer? partial? nested? form
+         environment)))
+     ((and screamer? (eq (first form) 'multiple-value-call-nondeterministic))
+      (walk-multiple-value-call-nondeterministic
+       map-function reduce-function screamer? partial? nested? form environment))
+     ((and partial? (eq (first form) 'full)) (walk-full map-function form))
 
-    ;; Dealing with macros
-    ((valid-macro? form environment)
-     ;; Walk macro call
-     (walk-macro-call
-      map-function reduce-function screamer? partial? nested? form environment))
+     ;; Dealing with macros
+     ((valid-macro? form environment)
+      ;; Walk macro call
+      (walk-macro-call
+       map-function reduce-function screamer? partial? nested? form environment))
 
-    ((special-operator-p (first form))
-     (error "Cannot (currently) handle the special form ~S" (first form)))
+     ((special-operator-p (first form))
+      (error "Cannot (currently) handle the special form ~S" (first form)))
 
-    (t (walk-function-call
-        map-function reduce-function screamer? partial? nested? form
-        environment))))
+     (t (walk-function-call
+         map-function reduce-function screamer? partial? nested? form
+         environment)))))
 
 (defun-compile-time process-subforms (function form form-type environment)
   (case form-type
@@ -9106,3 +9216,18 @@ This is useful for creating patterns to be unified with other structures."
                 (collect (* (screamer::pure-one-value (i j)
                               (min i j))
                             c)))))))))
+
+
+;;; FIXME: Handling of macrolet is still incomplete. For instance,
+;;; the below example seems to run infinitely and exhaust the heap
+;;; on SBCL.
+;;; NOTE: Running the below as `global' instead gives correct behavior,
+;;; not sure why.
+(serapeum:comment
+  (all-values (local (loop for i from 0 below 4 when (evenp i) collect i))))
+;;; NOTE: The `iterate' version of the above seems to run fine, both with and
+;;; without nondeterminism.
+;;; This is partial evidence that lexical macro expansion is the issue, since
+;;; iterate doesn't use macrolet/symbol-macrolet
+(serapeum:comment
+  (all-values (local (iter (for i below 4) (when (evenp i) (collect (either i (1- i))))))))
