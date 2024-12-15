@@ -9223,6 +9223,10 @@ This is useful for creating patterns to be unified with other structures."
 ;;; on SBCL.
 ;;; NOTE: Running the below as `global' instead gives correct behavior,
 ;;; not sure why.
+;;; NOTE: Macroexpanding the loop into block forms and manually splicing
+;;; them into the all-values works with both local and global, with and
+;;; without nondeterminism. Further evidence that the issue is in
+;;; macroexpansion?
 (serapeum:comment
   (all-values (local (loop for i from 0 below 4 when (evenp i) collect i))))
 ;;; NOTE: The `iterate' version of the above seems to run fine, both with and
