@@ -100,6 +100,82 @@ Example code:
                      (/ stored-prob (current-probability))))))))
     (funcall f cont)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declare-nondeterministic 'p-a-member-of))
+
+(cl:defun p-a-member-of (sequence)
+  "EXPERIMENTAL
+Parallel version of a-member-of.
+Currently works ONLY inside `all-values' and `for-effects'.
+
+The consequences of variables defined before this
+function's invocation being mutated after said
+invocation are undefined.
+
+Does not exit until all nondeterministic paths have
+succeeded"
+  (declare (ignore sequence))
+  (screamer-error
+   "P-A-MEMBER-OF is a nondeterministic function. As such, it must be called~%~
+   only from a nondeterministic context."))
+
+;;; FIXME: Doesn't work with one-value or n-values!
+(cl:defun p-a-member-of-nondeterministic (continuation sequence)
+  (serapeum:nest
+   (let* ((sequence (value-of sequence)))
+     (unless (serapeum:sequencep sequence)
+       (fail)))
+   (if (emptyp sequence) (fail))
+   ;; Make a form to store the generated futures
+   ;; FIXME: Currently futures keep running even after
+   ;; leaving the nondeterministic form, unless they fail,
+   ;; otherwise throw a signal, or finish.
+   (let (futures
+         (q (lparallel.queue:make-queue)))
+     (declare (dynamic-extent futures q))
+     (iter:iter (iter:for el in-sequence sequence)
+       ;; Collect every promise into `futures'
+       (push
+        ;; Make a closure so we don't accidentally
+        ;; reference the outer value of `el'
+        (let ((el el))
+          (lparallel:future
+            (let (
+                  ;; Make a copy of `*nondeterministic-context*'
+                  ;; NOTE: The contents of the context will
+                  ;; not be copied!
+                  (*nondeterministic-context*
+                    (when *nondeterministic-context*
+                      (copy-hash-table *nondeterministic-context*)))
+                  ;; Copy `*pure-cache*' in case the implementation
+                  ;; doesn't use thread-safe hash-tables
+                  (*pure-cache*
+                    (when *pure-cache*
+                      (copy-hash-table *pure-cache*)))
+                  ;; Copy trail to avoid mangling between threads
+                  (*trail* (copy-array *trail*))
+                  ;; Copy value-collection objects
+                  (*screamer-results* nil)
+                  (*last-value-cons* nil))
+              (choice-point (funcall continuation el))
+              (dolist (result *screamer-results*)
+                (lparallel.queue:push-queue result q)))))
+        futures))
+     (iter:iter
+       (iter:until
+        (and (every #'lparallel:fulfilledp futures)
+             (lparallel.queue:queue-empty-p q)))
+       ;; Wait for queue to not be empty, then get values from it
+       ;; NOTE: While this means the main thread is constantly
+       ;; running instead of idling, it also means we don't need
+       ;; to worry about cases where the queue doesn't get
+       ;; populated but all futures exit
+       (when (lparallel.queue:peek-queue q)
+         (appendf *screamer-results* (list (lparallel.queue:pop-queue q))))
+       (setf *last-value-cons* (last *screamer-results*)))
+     ;; After all choice points are attempted, fail
+     (fail))))
+
 
 (export '(collect-trail
           bounded?
@@ -113,7 +189,8 @@ Example code:
           factor-prob
           *possibility-consolidator*
           *screamer-max-failures*
-          call/cc))
+          call/cc
+          p-a-member-of))
 
 
 
