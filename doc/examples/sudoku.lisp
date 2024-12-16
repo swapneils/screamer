@@ -112,17 +112,17 @@
                             (columns vars)
                             (boxes vars))
                vars)
-        (assert! (apply 'unapplied-all-differentv list)))
+        (assert! (all-differentv list)))
       (reorder #'domain-size
                #'(lambda (x) (declare (ignore x)) nil)
                #'<
                #'linear-force)))))
 
+(defun print-sudoku-grid (grid)
+  (format t "~%~%~{~{~A ~}~%~}" (serapeum:batches grid 9 :even t)))
+
 (defun run ()
   (loop repeat 1
-        do (sudoku *sudoku-problem-1*)
-           (sudoku *sudoku-problem-2*)
-           (sudoku *sudoku-problem-3*)))
-
-
-
+        do (print-sudoku-grid (sudoku *sudoku-problem-1*))
+           (print-sudoku-grid (sudoku *sudoku-problem-2*))
+           (print-sudoku-grid (sudoku *sudoku-problem-3*))))
