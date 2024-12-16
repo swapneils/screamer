@@ -2987,7 +2987,8 @@ always deterministic.
 
 ALL-VALUES is analogous to the `bagof' primitive in Prolog."
   (let ((values '*screamer-results*)
-        (value (gensym "value")))
+        ;; TODO: Figure out why we can't make this a `gensym'
+        (value 'value))
     `(let ((,values nil)
            (*last-value-cons* nil))
        (for-effects
@@ -3026,7 +3027,8 @@ constraints or FAIL calls remove potential branches, then the
 sum of the probabilities returned will be less than 1."
   (let ((values '*screamer-results*)
         (pointer (gensym "enclosing-trail-pointer"))
-        (value (gensym "value")))
+        ;; TODO: Figure out why we can't make this a `gensym'
+        (value 'value))
     `(let ((,values '())
            (*last-value-cons* nil)
            ;; Reset probability
@@ -3144,7 +3146,8 @@ value of BODY and DEFAULT is nested in, and restarted for, each backtrack of
 N."
   (when (numberp n) (assert (typep n '(integer 0))))
   (let ((counter (gensym "I"))
-        (value (gensym "value"))
+        ;; TODO: Figure out why we can't make this a `gensym'
+        (value 'value)
         (value-list '*screamer-results*))
     `(block n-values
        (let* ((,counter (value-of ,n))
@@ -3172,7 +3175,8 @@ N."
 See the docstring of `ALL-VALUES-PROB' for more details."
   (when (numberp n) (assert (typep n '(integer 0))))
   (let ((counter (gensym "I"))
-        (value (gensym "value"))
+        ;; TODO: Figure out why we can't make this a `gensym'
+        (value 'value)
         (value-list '*screamer-results*)
         (pointer (gensym "enclosing-trail-pointer")))
     `(block n-values
@@ -9106,3 +9110,23 @@ This is useful for creating patterns to be unified with other structures."
                 (collect (* (screamer::pure-one-value (i j)
                               (min i j))
                             c)))))))))
+
+;; FIXME: If collector forms like ALL-VALUES use a gensym for `value',
+;; some forms get the actual value put in the let binding-variable
+;; slot, rather than a gensym.
+;; Not sure what is making this error, though it seems to precede the
+;; introduction of this gensym (which was itself done to fix memory
+;; fault behaviors resulting from the output not being copied when it
+;; was a list)
+;; NOTE: So far I've only seen this specifically when a numeric
+;; literal is placed in the final position
+;; NOTE: Mitigated for now by using a bare unexported symbol instead
+;; of a gensym, since in practice it's extremely unlikely to be clobbered
+;; unless people either code in the `:screamer' package or intentionally
+;; try to clobber it.
+;; Example:
+(serapeum:comment
+  "failing case"
+  (all-values (print 'hi) (either 2 3) 4)
+  "similar succeeding case"
+  (let ((real-value 5)) (all-values (print 'hi) (either 2 3) real-value)))
