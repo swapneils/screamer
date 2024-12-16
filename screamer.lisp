@@ -1332,15 +1332,134 @@ contexts even though they may appear inside a SCREAMER::DEFUN.")
 ;;;  Other:
 ;;;   MACRO-CALL LAMBDA-CALL SYMBOL-CALL SETF-CALL
 
+;;; TODO: Improve testing for macrolet/symbol-macrolet
+
+(defvar-compile-time *screamer-macroexpansions* nil
+  "internal alist tracking lexical macros while they are expanded by `walk'")
+
+(defun-compile-time expand-lexical-environments (form &optional environment)
+  "EXPERIMENTAL
+Expands macrolet/symbol-macrolet forms and their invocations.
+Returns 2 values, a modified form to be processed by WALK and
+the updated value of `*screamer-macroexpansions*'.
+
+SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
+  ;; (print (list 'internal form 'valid-macro (and (consp form) (symbolp (first form)) (valid-macro? form))))
+  (let ((*screamer-macroexpansions* *screamer-macroexpansions*))
+    (macrolet ((call-expansion (form env)
+                 `(destructuring-bind (f e)
+                      (expand-lexical-environments ,form ,env)
+                    ;; (print (list 'recursive 'form f 'expansions e))
+                    (setf *screamer-macroexpansions* e)
+                    f)))
+      (list
+       (or
+        (trivia:match form
+          ;; If an empty declare form, get rid of it
+          ;; TODO: Do we need this?
+          ((list 'declare) nil)
+          ;; If a quoted form or declaration, ignore it
+          ((list* (or 'quote 'declare) _) form)
+          ;; If an empty macrolet or symbol-macrolet, ignore it
+          ((list* (or 'macrolet 'symbol-macrolet) nil body)
+           `(let nil ,@body))
+          ;; If a macrolet, expand and save the defs and expand the body.
+          ((list* 'macrolet defs body)
+           ;; Push the lexical macro definitions onto `*screamer-macroexpansions*'
+           (setf *screamer-macroexpansions*
+                 (append
+                  ;; Iterate through the defs and collect their lexical definitions
+                  (iter:iter
+                    (iter:for (name args . def-body) in defs)
+                    (let* (
+                           ;; Walk def. This automatically expands it as well,
+                           ;; using the current lexical environment to do so.
+                           (new-def-let-wrapper
+                             (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
+                                   t nil nil
+                                   `(let () ,@def-body) environment))
+                           (new-def-body (nthcdr 2 new-def-let-wrapper))
+                           ;; Create macro function for def
+                           ;; FIXME: Uses EVAL!!!
+                           (replacer (eval `(lambda ,args ,@new-def-body))))
+                      ;; Collect macro function to add to tracked lexical environment
+                      (iter:collect `(,name . ,replacer))))
+                  *screamer-macroexpansions*))
+           ;; Expand the body with the new lexical macroexpansions
+           `(let nil ,@(mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) body)))
+          ;; If a symbol-macrolet, expand and save the defs and expand the body.
+          ((list* 'symbol-macrolet defs body)
+           ;; Push the lexical symbol-macro definitions onto `*screamer-macroexpansions*'
+           (setf *screamer-macroexpansions*
+                 (append
+                  ;; Iterate through the defs and collect their lexical definitions
+                  (iter:iter
+                    (iter:for (name . def-body) in defs)
+                    (let* (
+                           ;; Expand def based on parent env
+                           ;; (new-def-body (mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) def-body))
+                           ;; FIXME: Currently does nothing!!!
+                           ;; (new-def-body def-body)
+                           ;; Create macro function for def
+                           (replacer (eval `(lambda () ',@def-body))))
+                      ;; (print (list 'symbol-macro-body `(',@def-body)))
+                      ;; Collect labelled symbol macro function to add to tracked lexical environment
+                      (iter:collect `((symbol ,name) . ,replacer))))
+                  *screamer-macroexpansions*))
+           ;; Expand the body with the new lexical macroexpansions
+           `(let nil ,@(mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) body)))
+          ;; If an ordinary macro, expand it step by step
+          ;; NOTE: Shouldn't be needed since walk calls this at every step, and
+          ;; walk also expands macros when it finds them
+          ;; ((trivia:guard (list* form-name _)
+          ;;                (and
+          ;;                 (print (list 'name form-name))
+          ;;                 (symbolp (first form))
+          ;;                 (valid-macro? form environment)
+          ;;                 (not (equal form (macroexpand-1 form environment)))
+          ;;                 ))
+          ;;  (let ((*macroexpand-hook* #'funcall))
+          ;;    (print (list "expanding-macro" form (macroexpand form environment)))
+          ;;    (call-expansion (macroexpand form environment) environment)))
+          ;; If a known lexical macro, expand it and then look at the result
+          ((trivia:guard (list* form-name form-args)
+                         (assoc form-name *screamer-macroexpansions*))
+           (let* ((match (assoc form-name *screamer-macroexpansions*))
+                  ;; Get the macroexpansion function
+                  (converter (cdr match)))
+             ;; (print '(known-macro))
+             ;; Call the macroexpansion function on the args and look at the result
+             (call-expansion (apply converter form-args) environment)))
+          ;; If a known lexical symbol-macro, expand it and look at the result
+          ((trivia:guard (type symbol)
+                         (assoc `(symbol ,form) *screamer-macroexpansions* :test 'equal))
+           (let* ((match (assoc (list 'symbol form) *screamer-macroexpansions* :test 'equal))
+                  ;; Get the macroexpansion function
+                  (converter (cdr match)))
+             ;; (print `(known-symbol ,form match ,match))
+             (call-expansion (funcall converter) environment))))
+        ;; If the form doesn't match the lexical expansion cases, walk the form.
+        ;; Note that `walk' (seemingly?) relies on the map-function to call it
+        ;; recursively when lacking a `reduce-function', rather than calling itself,
+        ;; so the below doesn't create multiple nested recursive processes or similar.
+        ;; (and (print "surrendering") (walk walk-map-function nil t nil nil form environment))
+        (and
+         ;; (print (list "surrendering" form *screamer-macroexpansions*))
+         form))
+       *screamer-macroexpansions*))))
+
 (defun-compile-time walk
     (map-function reduce-function screamer? partial? nested? form environment)
   ;; TODO: Add MACROLET walking (via trivial-environments since this can't
   ;; otherwise be done portably, with a fallback to fail on this case?)
   ;; needs work: Cannot walk MACROLET or special forms not in both CLtL1 and
   ;;             CLtL2.
-  (cond
-    ((self-evaluating? form) (funcall map-function form 'quote))
-    ((symbolp form) (funcall map-function form 'variable))
+  (destructuring-bind (form *screamer-macroexpansions*)
+      (expand-lexical-environments form environment)
+    ;; (print (list 'expansion-done 'form form 'expansions-known *screamer-macroexpansions*))
+   (cond
+     ((self-evaluating? form) (funcall map-function form 'quote))
+     ((symbolp form) (funcall map-function form 'variable))
 
     ((eq (first form) 'block)
      (walk-block
@@ -1441,7 +1560,7 @@ contexts even though they may appear inside a SCREAMER::DEFUN.")
 
     (t (walk-function-call
         map-function reduce-function screamer? partial? nested? form
-        environment))))
+        environment)))))
 
 (defun-compile-time process-subforms (function form form-type environment)
   (case form-type
