@@ -170,7 +170,7 @@ succeeded"
        ;; running instead of idling, it also means we don't need
        ;; to worry about cases where the queue doesn't get
        ;; populated but all futures exit
-       (when (lparallel.queue:peek-queue q)
+       (when (not (lparallel.queue:queue-empty-p q))
          (appendf *screamer-results* (list (lparallel.queue:pop-queue q))))
        (setf *last-value-cons* (last *screamer-results*)))
      ;; After all choice points are attempted, fail
