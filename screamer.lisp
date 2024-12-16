@@ -3880,20 +3880,32 @@ either a list or a vector."
                 `(funcall ,cont ,inp))))
    (cond
      ((listp sequence)
-      (unless (null sequence)
-        (choice-point-external
-         (loop (if (null (rest sequence)) (return))
-               (choice-point-internal (call-continuation continuation (first sequence)))
-               (setf sequence (value-of (rest sequence)))))
-        (call-continuation continuation (first sequence))))
+      (if (null sequence)
+          (fail)
+          (progn
+            (choice-point-external
+             (loop (if (null (rest sequence)) (return))
+                   (choice-point-internal (call-continuation continuation (first sequence)))
+                   (setf sequence (value-of (rest sequence)))))
+            (call-continuation continuation (first sequence)))))
      ((vectorp sequence)
       (let ((n (length sequence)))
-        (unless (zerop n)
+        (if (zerop n)
+            (fail)
           (let ((n (1- n)))
             (choice-point-external
              (dotimes (i n)
                (choice-point-internal (call-continuation continuation (aref sequence i)))))
             (call-continuation continuation (aref sequence n))))))
+     ((serapeum:sequencep sequence)
+      (let ((n (length sequence)))
+        (if (zerop n)
+            (fail)
+            (let ((n (1- n)))
+              (choice-point-external
+               (dotimes (i n)
+                 (choice-point-internal (call-continuation continuation (elt sequence i)))))
+              (call-continuation continuation (elt sequence n))))))
      (t (error "SEQUENCE must be a sequence")))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -8099,11 +8111,7 @@ Works on nested sequences which potentially contain variables, e.g. (all-differe
                 (mapcar
                  (curry diff-func (car xs))
                  (cdr xs))))
-            (coerce inp 'list))))
-  ;; (apply #'andv
-  ;;        (mapcar (alexandria:curry #'apply #'andv)
-  ;;                (maplist (lambda (xs) (when (cdr xs) (mapcar (alexandria:curry #'/=v (car xs)) (cdr xs)))) inp)))
-  )
+            (coerce inp 'list)))))
 
 ;;; Lifted EQUALV
 
