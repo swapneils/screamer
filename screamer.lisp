@@ -3408,7 +3408,11 @@ forms")
     (gethash parameters cache)))
 
 (cl:defun cache-pure-put (location-key parameters value)
-  (let* ((cache (cache-pure-ensure location-key)))
+  (let* ((cache (cache-pure-ensure location-key))
+         (value (etypecase value
+                  (list (copy-tree value))
+                  (vector (copy-array value))
+                  (t value))))
     ;; (format t "~%putting loc ~A params ~A value ~A into ~A"
     ;;         location-key
     ;;         parameters
