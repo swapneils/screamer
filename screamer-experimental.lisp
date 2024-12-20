@@ -149,9 +149,14 @@ succeeded"
                       (copy-hash-table *nondeterministic-context*)))
                   ;; Copy `*pure-cache*' in case the implementation
                   ;; doesn't use thread-safe hash-tables
+                  ;; FIXME: This currently causes memory faults
+                  ;; in SBCL, so pure-cache isn't copied
+                  ;; into threads
                   (*pure-cache*
                     (when *pure-cache*
-                      (copy-hash-table *pure-cache*)))
+                      nil
+                      ;; (copy-tree *pure-cache*)
+                      ))
                   ;; Copy trail to avoid mangling between threads
                   (*trail* (copy-array *trail*))
                   ;; Copy value-collection objects
