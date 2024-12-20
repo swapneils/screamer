@@ -3003,71 +3003,6 @@ deterministic."
      (unless *nondeterministic-context*
        (setf *pure-cache* nil))))
 
-(defmacro-compile-time one-value (form &optional (default '(fail)))
-  "Returns the first nondeterministic value yielded by FORM.
-
-No further execution of FORM is attempted after it successfully returns one
-value.
-
-If FORM does not yield any nondeterministic values \(i.e. it fails) then
-DEFAULT is evaluated and its value returned instead. DEFAULT defaults to
-\(FAIL) if not present.
-
-Local side effects performed by FORM are undone when ONE-VALUE returns, but
-local side effects performed by DEFAULT are not undone when ONE-VALUE returns.
-
-A ONE-VALUE expression can appear in both deterministic and nondeterministic
-contexts. Irrespective of what context the ONE-VALUE appears in, FORM is
-always in a nondeterministic context, while DEFAULT is in whatever context the
-ONE-VALUE form appears.
-
-A ONE-VALUE expression is nondeterministic if DEFAULT is present and is
-nondeterministic, otherwise it is deterministic.
-
-If DEFAULT is present and nondeterministic, and if FORM fails, then it is
-possible to backtrack into the DEFAULT and for the ONE-VALUE form to
-nondeterministically return multiple times. ONE-VALUE is analogous to the cut
-primitive \(`!') in Prolog."
-  `(block one-value
-     (for-effects (return-from one-value ,form))
-     ,default))
-
-(defmacro-compile-time possibly? (&body body)
-  "Evaluates BODY as an implicit PROGN in nondeterministic context,
-returning true if the body ever yields true.
-
-The body is repeatedly backtracked as long as it yields NIL. Returns
-the first true value yielded by the body, or NIL if body fails before
-yielding true.
-
-Local side effects performed by the body are undone when POSSIBLY? returns.
-
-A POSSIBLY? expression can appear in both deterministic and nondeterministic
-contexts. Irrespective of what context the POSSIBLY? appears in, its body is
-always in a nondeterministic context. A POSSIBLY? expression is always
-deterministic."
-  `(one-value (let ((value (progn ,@body))) (unless value (fail)) value) nil))
-
-(defmacro-compile-time necessarily? (&body body)
-  "Evaluates BODY as an implicit PROGN in nondeterministic context,
-returning true if the body never yields false.
-
-The body is repeatedly backtracked as long as it yields true. Returns the last
-true value yielded by the body if it fails before yielding NIL, otherwise
-returns NIL.
-
-Local side effects performed by the body are undone when NECESSARILY? returns.
-
-A NECESSARILY? expression can appear in both deterministic and
-nondeterministic contexts. Irrespective of what context the NECESSARILY?
-appears in, its body is always in a nondeterministic context. A NECESSARILY?
-expression is always deterministic."
-  `(let ((result t))
-     (one-value
-         (let ((value (progn ,@body)))
-           (when value (setf result value) (fail))
-           value)
-         result)))
 
 (defvar *last-value-cons* nil
   "Internal variable tracking the end of `*screamer-results*'
@@ -3332,7 +3267,7 @@ See the docstring of `ALL-VALUES-PROB' for more details."
          (unwind-trail-to ,pointer)
          ,(if default-on-failure default value-list)))))
 
-(defmacro-compile-time ith-value ((i &key (default '(fail) default-on-failure)) &body body)
+(defmacro-compile-time ith-value ((i &key (default '(fail))) &body body)
   "Returns the Ith nondeterministic value yielded by BODY.
 
 I must be an integer. The first nondeterministic value yielded by BODY is
@@ -3372,14 +3307,83 @@ Note that ITH-VALUE does not collect the results it encounters, and so cannot
 provide that information to other screamer functions that interact with prior
 results. For this functionality, use `N-VALUES' and get the last element of
 the output."
-  (let ((counter (gensym "I")))
-    `(block ith-value
-       (let ((,counter (value-of ,i)))
-         (for-effects (let ((value (progn ,@body)))
-                        (if (zerop ,counter)
-                            (return-from ith-value value)
-                            (decf ,counter))))
-         (when ,default-on-failure ,default)))))
+  `(car
+    (last
+     (n-values ((1+ ,i) :default (list ,default))
+       ,@body)))
+  ;; (let ((counter (gensym "I")))
+  ;;   `(block ith-value
+  ;;      (let ((,counter (value-of ,i)))
+  ;;        (for-effects (let ((value (progn ,@body)))
+  ;;                       (if (zerop ,counter)
+  ;;                           (return-from ith-value value)
+  ;;                           (decf ,counter))))
+  ;;        (when ,default-on-failure ,default))))
+  )
+
+(defmacro-compile-time one-value (form &optional (default '(fail)))
+  "Returns the first nondeterministic value yielded by FORM.
+
+No further execution of FORM is attempted after it successfully returns one
+value.
+
+If FORM does not yield any nondeterministic values \(i.e. it fails) then
+DEFAULT is evaluated and its value returned instead. DEFAULT defaults to
+\(FAIL) if not present.
+
+Local side effects performed by FORM are undone when ONE-VALUE returns, but
+local side effects performed by DEFAULT are not undone when ONE-VALUE returns.
+
+A ONE-VALUE expression can appear in both deterministic and nondeterministic
+contexts. Irrespective of what context the ONE-VALUE appears in, FORM is
+always in a nondeterministic context, while DEFAULT is in whatever context the
+ONE-VALUE form appears.
+
+A ONE-VALUE expression is nondeterministic if DEFAULT is present and is
+nondeterministic, otherwise it is deterministic.
+
+If DEFAULT is present and nondeterministic, and if FORM fails, then it is
+possible to backtrack into the DEFAULT and for the ONE-VALUE form to
+nondeterministically return multiple times. ONE-VALUE is analogous to the cut
+primitive \(`!') in Prolog."
+  `(ith-value (0 :default ,default) ,form))
+
+(defmacro-compile-time possibly? (&body body)
+  "Evaluates BODY as an implicit PROGN in nondeterministic context,
+returning true if the body ever yields true.
+
+The body is repeatedly backtracked as long as it yields NIL. Returns
+the first true value yielded by the body, or NIL if body fails before
+yielding true.
+
+Local side effects performed by the body are undone when POSSIBLY? returns.
+
+A POSSIBLY? expression can appear in both deterministic and nondeterministic
+contexts. Irrespective of what context the POSSIBLY? appears in, its body is
+always in a nondeterministic context. A POSSIBLY? expression is always
+deterministic."
+  `(one-value (let ((value (progn ,@body))) (unless value (fail)) value) nil))
+
+(defmacro-compile-time necessarily? (&body body)
+  "Evaluates BODY as an implicit PROGN in nondeterministic context,
+returning true if the body never yields false.
+
+The body is repeatedly backtracked as long as it yields true. Returns the last
+true value yielded by the body if it fails before yielding NIL, otherwise
+returns NIL.
+
+Local side effects performed by the body are undone when NECESSARILY? returns.
+
+A NECESSARILY? expression can appear in both deterministic and
+nondeterministic contexts. Irrespective of what context the NECESSARILY?
+appears in, its body is always in a nondeterministic context. A NECESSARILY?
+expression is always deterministic."
+  `(let ((result t))
+     (one-value
+         (let ((value (progn ,@body)))
+           (when value (setf result value) (fail))
+           value)
+         result)))
 
 ;;; Memoization
 (defvar-compile-time *pure-cache* nil
