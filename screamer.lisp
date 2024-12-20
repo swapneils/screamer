@@ -3425,6 +3425,22 @@ forms")
 ;;; packages though...
 ;;; SCREAMER-MEMO or SCREAMER-PURE are verbose, but at least not conflicting?
 ;;;
+;; FIXME: Seems to be some bug in pure-values?
+(serapeum:example
+  ;; Test case
+  (all-values (fib-cached (a-member-of '(0 1 2 3 4 5 6 7 8))))
+  ;; Works
+  (screamer::defun fib-cached (idx)
+    (screamer::pure-one-value (idx)
+      (or
+       (case idx (0 0) (1 1) (2 1))
+       (+ (fib-cached (1- idx)) (fib-cached (- idx 2))))))
+  ;; Does bad things
+  (screamer::defun fib-cached (idx)
+    (screamer::pure-values (idx)
+      (or
+       (case idx (0 0) (1 1) (2 1))
+       (+ (fib-cached (1- idx)) (fib-cached (- idx 2)))))))
 (defmacro-compile-time pure-values (parameters &body body &environment environment)
   "EXPERIMENTAL
 Evaluates BODY as an implicit LOCAL form. PARAMETERS is a list of expressions
