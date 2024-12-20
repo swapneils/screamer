@@ -3050,6 +3050,7 @@ ALL-VALUES is analogous to the `bagof' primitive in Prolog."
     `(let ((,values nil)
            (*last-value-cons* nil))
        (for-effects
+         (local (setf (gethash :screamer-accumulation-strategy *nondeterministic-context*) :all-values))
          (let* ((,value (progn ,@body))
                 (,value (copy-output-value ,value)))
            (global (if (null ,values)
@@ -3094,6 +3095,7 @@ sum of the probabilities returned will be less than 1."
                        (trail-prob nil 1))))
        ;; Process BODY
        (for-effects
+         (local (setf (gethash :screamer-accumulation-strategy *nondeterministic-context*) :all-values))
          (let* ((,value (progn ,@body))
                 (,value (copy-output-value ,value)))
            (global (if (null ,values)
@@ -3203,69 +3205,75 @@ nondeterministically on each value of N. In this case, backtracking for each
 value of BODY and DEFAULT is nested in, and restarted for, each backtrack of
 N."
   (when (numberp n) (assert (typep n '(integer 0))))
-  (let ((counter (gensym "I"))
-        ;; TODO: Figure out why we can't make this a `gensym'
-        (value 'value)
-        (value-list '*screamer-results*))
+  (let* ((acc-strat `(gethash :screamer-accumulation-strategy *nondeterministic-context*))
+         ;; TODO: Figure out why we can't make this a `gensym'
+         (value 'value)
+         (value-list '*screamer-results*))
     `(block n-values
-       (let* ((,counter (value-of ,n))
-              (,value-list nil)
+       (let* ((,value-list nil)
               (*last-value-cons* nil))
-         (declare (integer ,counter) ((or cons null) ,value-list))
-         (for-effects
-           (unless (zerop ,counter)
-             (global
-               (let* ((,value (progn ,@body))
-                      (,value (copy-output-value ,value)))
-                 (decf ,counter)
-                 ;; Add the value to the collected list
-                 (if (null ,value-list)
-                     (setf *last-value-cons* (cached-list ,value)
-                           ,value-list *last-value-cons*)
-                     (setf (rest *last-value-cons*) (cached-list ,value)
-                           *last-value-cons* (rest *last-value-cons*)))
-                 (when (zerop ,counter)
-                   (return-from n-values ,value-list))))))
-         ,(if default-on-failure default value-list)))))
+         (declare ((or cons null) ,value-list))
+         (or
+          (for-effects
+            ;; Store the accumulation strategy
+            (local (setf ,acc-strat (list :n-values (value-of ,n))))
+            (unless (zerop (second ,acc-strat))
+              (global
+                (let* ((,value (progn ,@body))
+                       (,value (copy-output-value ,value)))
+
+                  ;; Add the value to the collected list
+                  (appendf ,value-list (cached-list ,value))
+                  ;; (if (null ,value-list)
+                  ;;     (setf *last-value-cons* (cached-list ,value)
+                  ;;           ,value-list *last-value-cons*)
+                  ;;     (setf (rest *last-value-cons*) (cached-list ,value)
+                  ;;           *last-value-cons* (rest *last-value-cons*)))
+                  (when (>= (length ,value-list) (second ,acc-strat))
+                    ;; (return-from n-values ,value-list)
+                    (throw '%escape ,value-list))))))
+          ,(if default-on-failure default value-list))))))
 
 (defmacro-compile-time n-values-prob ((n &key (default nil default-on-failure)) &body body)
   "Identical to N-VALUES, but returns pairs of values and probabilities.
 See the docstring of `ALL-VALUES-PROB' for more details."
   (when (numberp n) (assert (typep n '(integer 0))))
-  (let ((counter (gensym "I"))
+  (let ((acc-strat `(gethash :screamer-accumulation-strategy *nondeterministic-context*))
         ;; TODO: Figure out why we can't make this a `gensym'
         (value 'value)
         (value-list '*screamer-results*)
         (pointer (gensym "enclosing-trail-pointer")))
     `(block n-values
-       (let ((,counter (value-of ,n))
-             (,value-list nil)
+       (let ((,value-list nil)
              (*last-value-cons* nil)
              ;; Reset probability
              (,pointer (prog1 (fill-pointer *trail*)
                          (trail-prob nil 1))))
-         (declare (integer ,counter) ((or cons null) ,value-list))
+         (declare ((or cons null) ,value-list))
          ;; Process BODY
-         (for-effects
-           (unless (zerop ,counter)
-             (let* ((,value (progn ,@body))
-                    (,value (copy-output-value ,value))
-                    (,value (cached-list ,value
-                                         (current-probability *trail*))))
-               (decf ,counter)
-               ;; Add the value to the collected list
-               (if (null ,value-list)
-                   (setf *last-value-cons* (cached-list ,value)
-                         ,value-list *last-value-cons*)
-                   (setf (rest *last-value-cons*) (cached-list ,value)
-                         *last-value-cons* (rest *last-value-cons*)))
-               (when (zerop ,counter)
-                 ;; Return to enclosing trail context
-                 (unwind-trail-to ,pointer)
-                 (return-from n-values ,value-list)))))
-         ;; Return to enclosing trail context
-         (unwind-trail-to ,pointer)
-         ,(if default-on-failure default value-list)))))
+         (prog1
+             (or
+              (for-effects
+                (local (setf ,acc-strat (list :n-values (value-of ,n))))
+                (unless (zerop (second ,acc-strat))
+                  (let* ((,value (progn ,@body))
+                         (,value (copy-output-value ,value))
+                         (,value (cached-list ,value
+                                              (current-probability *trail*))))
+                    ;; Add the value to the collected list
+                    (appendf ,value-list (cached-list ,value))
+                    ;; (if (null ,value-list)
+                    ;;     (setf *last-value-cons* (cached-list ,value)
+                    ;;           ,value-list *last-value-cons*)
+                    ;;     (setf (rest *last-value-cons*) (cached-list ,value)
+                    ;;           *last-value-cons* (rest *last-value-cons*)))
+                    (when (>= (length ,value-list) (second ,acc-strat))
+                      ;; Return to enclosing trail context
+                      (unwind-trail-to ,pointer)
+                      (throw '%escape ,value-list)))))
+              ,(if default-on-failure default value-list))
+           ;; Return to enclosing trail context
+           (unwind-trail-to ,pointer))))))
 
 (defmacro-compile-time ith-value ((i &key (default '(fail))) &body body)
   "Returns the Ith nondeterministic value yielded by BODY.
