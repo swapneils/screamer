@@ -185,6 +185,7 @@ succeeded"
 (export '(collect-trail
           bounded?
           grounded?
+          mapcar-nondeterministic
           pure-values
           pure-one-value
           sample
