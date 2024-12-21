@@ -37,3 +37,15 @@
   :depends-on (:screamer :alexandria :iterate :hu.dwim.stefil)
   :components ((:file "primordial")
                (:file "tests")))
+
+
+(defsystem :screamer-tests/experimental
+  :serial t
+  :licence "MIT"
+  :description "Tests for Screamer experimental features"
+  :author "Swapneil Singh"
+  :maintainer "Swapneil Singh"
+  :version "0.0.1"
+  :depends-on (:screamer-tests
+               :screamer/experimental)
+  :components ((:file "tests-experimental")))
