@@ -6,3 +6,8 @@
   (lparallel.kernel-util:with-temp-kernel ((serapeum:count-cpus))
     (is (equal (iota 2000)
                (sort (all-values (p-a-member-of (iota 2000))) #'<)))))
+
+(deftest test-p-an-integer-between ()
+  (lparallel.kernel-util:with-temp-kernel ((serapeum:count-cpus))
+    (is (equal (iota 2000)
+               (sort (all-values (p-an-integer-between 0 (1- 2000))) #'<)))))

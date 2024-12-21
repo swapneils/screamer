@@ -218,6 +218,12 @@ NOTE: Has not been tested with screamer::defun"
 (cl:defmacro p-either (&rest options)
   `(funcall-nondeterministic (p-a-member-of (list ,@(iter:iter (iter:for opt in options) (iter:collect `(lambda () ,opt)))))))
 
+(defun p-an-integer-between (low high)
+  (let ((low (ceiling (value-of low)))
+        (high (floor (value-of high))))
+    (if (> low high) (fail)
+        (p-a-member-of (alexandria:iota (1+ (- high low)) :start low)))))
+
 
 (export '(collect-trail
           bounded?
@@ -234,6 +240,7 @@ NOTE: Has not been tested with screamer::defun"
           *screamer-max-failures*
           call/cc
           p-a-member-of
+          p-an-integer-between
           p-either))
 
 

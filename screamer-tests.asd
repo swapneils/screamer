@@ -34,7 +34,7 @@
   :author "Jeffrey Mark Siskind & David Allen McAllester"
   :maintainer "Swapneil Singh"
   :version "4.0.0"
-  :depends-on (:screamer :alexandria :iterate :hu.dwim.stefil)
+  :depends-on (:screamer :alexandria :serapeum :iterate :hu.dwim.stefil)
   :components ((:file "primordial")
                (:file "tests")))
 
