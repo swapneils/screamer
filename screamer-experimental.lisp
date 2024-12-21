@@ -215,6 +215,9 @@ NOTE: Has not been tested with screamer::defun"
      ;; After all choice points are attempted, fail
      (fail))))
 
+(cl:defmacro p-either (&rest options)
+  `(funcall-nondeterministic (p-a-member-of (list ,@(iter:iter (iter:for opt in options) (iter:collect `(lambda () ,opt)))))))
+
 
 (export '(collect-trail
           bounded?
@@ -230,7 +233,8 @@ NOTE: Has not been tested with screamer::defun"
           *possibility-consolidator*
           *screamer-max-failures*
           call/cc
-          p-a-member-of))
+          p-a-member-of
+          p-either))
 
 
 
