@@ -3746,6 +3746,10 @@ PRINT-VALUES is analogous to the standard top-level user interface in Prolog."
 
 (defvar-compile-time *fail*
     (lambda ()
+      (when *screamer-max-failures*
+        (incf *screamer-failures*)
+        (when (> *screamer-failures* *screamer-max-failures*)
+          (throw '%escape nil)))
       (if *nondeterministic-context*
           (throw '%fail nil)
           (error "Cannot FAIL: no choice-point to backtrack to."))))
@@ -3757,10 +3761,6 @@ FAIL is deterministic function and thus it is permissible to reference #'FAIL,
 and write \(FUNCALL #'FAIL) or \(APPLY #'FAIL).
 
 Calling FAIL when there is no choice-point to backtrack to signals an error."
-  (when *screamer-max-failures*
-    (incf *screamer-failures*)
-    (when (> *screamer-failures* *screamer-max-failures*)
-      (throw '%escape nil)))
   (funcall *fail*))
 
 (defmacro-compile-time when-failing ((&body failing-forms) &body body)
