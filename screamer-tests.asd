@@ -32,8 +32,8 @@
   :licence "MIT"
   :description "Tests for Screamer"
   :author "Jeffrey Mark Siskind & David Allen McAllester"
-  :maintainer "Nikodemus Siivola <nikodemus@random-state.net>"
+  :maintainer "Swapneil Singh"
   :version "4.0.0"
-  :depends-on (:screamer :iterate :hu.dwim.stefil)
+  :depends-on (:screamer :alexandria :iterate :hu.dwim.stefil)
   :components ((:file "primordial")
                (:file "tests")))

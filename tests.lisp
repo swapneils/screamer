@@ -25,6 +25,8 @@
 
 (in-package :screamer-tests)
 
+(use-package :alexandria)
+
 (defun test-screamer (&optional no-debug)
   (flet ((test ()
            (eql 0 (getf (extract-test-run-statistics (screamer-tests))
