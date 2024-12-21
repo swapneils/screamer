@@ -72,6 +72,7 @@
   :author "Swapneil Singh"
   :maintainer "Swapneil Singh"
   :version "0.0.1"
-  :depends-on ("screamer")
+  :depends-on ("screamer"
+               "lparallel")
   :components
   ((:file "screamer-experimental")))
