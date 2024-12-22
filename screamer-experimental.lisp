@@ -158,17 +158,24 @@ variables."
    only from a nondeterministic context."))
 
 (cl:defun p-a-member-of-nondeterministic (continuation sequence
-                                          &key (ordered t))
-  (declare (optimize (speed 3) (space 3)))
+                                          &key (ordered t)
+                                          &aux (sequence (value-of sequence)))
+  (declare (optimize (speed 3) (space 3))
+           (function continuation))
   (serapeum:nest
-   (let* ((sequence (value-of sequence))))
+   ;; NOTE: Moved to the &aux definition
+   ;; (let* ((sequence (value-of sequence))))
    (serapeum:if-not (serapeum:sequencep sequence) (fail))
+   ;; Fail immediately if there are no values to consider
+   ;; NOTE: This should be done automatically by correct operation of the below...
    (if (emptyp sequence) (fail))
    ;; Make a form to store the generated futures
    ;; FIXME: Currently futures keep running even after
    ;; leaving the nondeterministic form, unless they fail,
    ;; otherwise throw a signal, or finish.
-   ;; NOTE: Mitigated by forcing all futures
+   ;; NOTE: Mitigated by forcing all futures before exit
+   ;; and making them exit early if the main thread
+   ;; is tracking any `escape' calls.
    (let* (futures
           (q (lparallel.queue:make-queue))
           (escapes (lparallel.queue:make-queue))
@@ -188,7 +195,9 @@ variables."
           ;; Bind max failures lexically to copy into future
           (max-failures *screamer-max-failures*))
      (declare (dynamic-extent futures context)
-              (dynamic-extent q)))
+              (dynamic-extent q escapes)
+              (type (or null (integer 0)) max-results)
+              (hash-table context)))
    ;; Unwind-protect to ensure futures are cleaned up even for
    ;; unexpected exits
    (unwind-protect
@@ -217,6 +226,13 @@ variables."
                         ;; collected `*screamer-results*'
                         accumulator-config-tracker
                         (last-screamer-results-size 0))
+                   (declare (dynamic-extent escaped
+                                            accumulator-config-tracker
+                                            last-screamer-results-size)
+                            (boolean escaped)
+                            (vector *trail*)
+                            (type (integer 0) last-screamer-results-size)
+                            (list *screamer-results* *last-value-cons* *pure-cache*))
                    ;; Copy over the nondeterministic context
                    (when context
                      (maphash (lambda (k v)
@@ -355,8 +371,9 @@ OPTIONS in order.
 Behaves equivalently to `p-a-member-of' with
 ORDERED=NIL and each element of options evaluated
 within its corresponding thread."
-  `(funcall-nondeterministic (p-a-member-of (list ,@(iter:iter (iter:for opt in options) (iter:collect `(lambda () ,opt))))
-                                            :ordered nil)))
+  `(funcall-nondeterministic
+    (p-a-member-of (list ,@(iter:iter (iter:for opt in options) (iter:collect `(lambda () ,opt))))
+                   :ordered nil)))
 
 (defun p-an-integer-between (low high)
   (let ((low (ceiling (value-of low)))
@@ -367,7 +384,8 @@ within its corresponding thread."
 (defun p-an-integer-above (low)
   "Note: Using `*maximum-discretization-range*' to decide
 how many threads to run at once"
-  (let ((high (+ low *maximum-discretization-range*)))
+  (let* ((low (value-of low))
+         (high (+ low *maximum-discretization-range*)))
     (declare (dynamic-extent high))
     (either
       (p-a-member-of (alexandria:iota *maximum-discretization-range* :start low))
@@ -375,7 +393,8 @@ how many threads to run at once"
 (defun p-an-integer-below (high)
   "Note: Using `*maximum-discretization-range*' to decide
 how many threads to run at once"
-  (let ((low (- high *maximum-discretization-range*)))
+  (let* ((high (value-of high))
+         (low (- high *maximum-discretization-range*)))
     (declare (dynamic-extent high))
     (either
       (p-a-member-of (nreverse (alexandria:iota *maximum-discretization-range* :start (1+ low))))

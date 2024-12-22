@@ -103,6 +103,9 @@ form, but will not be incremented in dynamic contexts where `*screamer-max-failu
 (defvar-compile-time *screamer-failures* 0
   "Tracks the number of failures for *screamer-max-failures*. Defaults to 0.
 This should only be modified by the `fail' function and `for-effects' macro.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (type (integer 0) *screamer-failures*)
+              (type (or null (integer 0)) *screamer-max-failures*)))
 
 (defvar-compile-time *dynamic-extent?* t
   "DEPRECATED: Currently has no effect.
@@ -142,6 +145,8 @@ hash-table.")
 (defvar-compile-time *tagbody-tags* '() "This must be globally NIL.")
 
 (defvar-compile-time *trail* (make-array 4096 :adjustable t :fill-pointer 0) "The trail.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (vector *trail*)))
 
 (defmacro-compile-time with-trail (size-form &rest body)
   "Evaluates the BODY forms with *trail* set to a new array of the specified size. (*trail* is part of Screamer's backtracking mechanism.)
@@ -168,7 +173,11 @@ for now.")
 
 (defvar-compile-time *numeric-bounds-collapse-threshold* 0.0000000000001
   "The threshold of closeness to consider 2 numbers equivalent.
-Use this to deal with floating-point errors, if necessary.")
+Use this to deal with floating-point errors, if necessary.
+
+This value must be a floating point number between 0 and 1.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (type (float 0 1) *numeric-bounds-collapse-threshold*)))
 
 (defun-compile-time roughly-= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
@@ -300,10 +309,14 @@ in comparison to `cl:mapcar'"
 
 (defvar-compile-time *function-record-table* (make-hash-table :test #'equal)
   "The function record table.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (hash-table *function-record-table*)))
 
 (defvar-compile-time *ordered-lambda-list-keywords*
     '(&optional &rest &key &allow-other-keys &aux)
   "The allowed lambda list keywords in order.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (list *ordered-lambda-list-keywords*)))
 
 (defmacro-compile-time choice-point-internal (form)
   `(catch '%fail
@@ -1340,6 +1353,8 @@ contexts even though they may appear inside a SCREAMER::DEFUN.")
 
 (defvar-compile-time *screamer-macroexpansions* nil
   "internal alist tracking lexical macros while they are expanded by `walk'")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (list *screamer-macroexpansions*)))
 
 (defun-compile-time expand-lexical-environments (form &optional environment)
   "EXPERIMENTAL
@@ -4659,6 +4674,7 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
 (defun infinity-* (x y) (and x y (* x y)))
 
 (defun contains-variables? (x)
+  (declare (optimize (speed 3) (space 3)))
   (typecase x
     (cons (or (contains-variables? (car x)) (contains-variables? (cdr x))))
     (vector (some #'contains-variables? x))
@@ -4666,15 +4682,17 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
     (otherwise nil)))
 
 (defun eliminate-variables (x)
+  (declare (optimize (speed 3) (space 3)))
   (if (contains-variables? x)
       (typecase x
         (cons (cached-cons (eliminate-variables (car x)) (eliminate-variables (cdr x))))
         (vector (map 'vector #'eliminate-variables x))
-        (t (eliminate-variables (variable-value x))))
+        (t (eliminate-variables (value-of x))))
       x))
 
 (defun print-variable (x stream print-level)
-  (declare (ignore print-level))
+  (declare (ignore print-level)
+           (stream stream))
   (let ((x (value-of x)))
     (cond
       ((variable? x)
