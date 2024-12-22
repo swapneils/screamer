@@ -3050,7 +3050,7 @@ ALL-VALUES is analogous to the `bagof' primitive in Prolog."
     `(let ((,values nil)
            (*last-value-cons* nil))
        (for-effects
-         (local (setf (gethash :screamer-accumulation-strategy *nondeterministic-context*) :all-values))
+         (local (setf (gethash :screamer-accumulation-strategy *nondeterministic-context*) (list :all-values)))
          (let* ((,value (progn ,@body))
                 (,value (copy-output-value ,value)))
            (global (if (null ,values)
@@ -3095,7 +3095,7 @@ sum of the probabilities returned will be less than 1."
                        (trail-prob nil 1))))
        ;; Process BODY
        (for-effects
-         (local (setf (gethash :screamer-accumulation-strategy *nondeterministic-context*) :all-values))
+         (local (setf (gethash :screamer-accumulation-strategy *nondeterministic-context*) (list :all-values)))
          (let* ((,value (progn ,@body))
                 (,value (copy-output-value ,value)))
            (global (if (null ,values)
