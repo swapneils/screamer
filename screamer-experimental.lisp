@@ -333,8 +333,14 @@ context if you need them."
             ;; ignore the returned value.
             (escape *screamer-results*)))))
 
-     ;; After all choice points are attempted, fail
-     (fail))))
+     ;; After all choice points are attempted, exit
+     (cond
+       ;; If in an `n-values' form and reaching the required result-count, call `escape' with the results
+       ((and max-results
+             (= (length *screamer-results*) max-results))
+        (escape *screamer-results*))
+       ;; Otherwise just `fail'
+       (t (fail))))))
 
 (cl:defmacro p-either (&rest options)
   `(funcall-nondeterministic (p-a-member-of (list ,@(iter:iter (iter:for opt in options) (iter:collect `(lambda () ,opt)))))))
