@@ -129,30 +129,29 @@ The consequences of variables defined before this
 function's invocation being mutated after said
 invocation are undefined.
 
-Does not exit until all nondeterministic paths have
-succeeded, even when within a form that does not ordinarily
-require completing all nondeterministic paths to return.
-
 When ORDERED is T, results are only collected from threads
 in the order of their corresponding members of SEQUENCE.
 When it is NIL, each thread's results will be collected
 on completion regardless of where its corresponding value
 is in SEQUENCE.
 
-WARNING: A thread's results are only collected once it is
-completed! If some member of SEQUENCE does not finish executing,
-its intermediate results will not be collected.
+When ORDERED is T, a thread's results are only collected once
+the thread itself has completed. When it is NIL, results
+are collected incrementally from each thread as they are
+collected.
 Note that if `p-a-member-of' is used within forms such as `one-value'
 or `n-values', their behavior of only requiring a certain number
-of results is carried over into
+of results is carried over into the child threads, though
+each thread individually needs to reach that max result
+count to exit before all nondeterministic generators have been
+exhausted.
 
-WARNING: Lexical environments are shared between
-parallel threads, and dynamic environment variables
-may be nullified within a parallel thread. This is
-due to the underlying threading implementation
-(`lparallel'); please defer to `lparallel' and
-`bordeaux-threads' for the behavior of thread
-variables relative to the main thread."
+WARNING: Lexical environments are shared between parallel threads.
+WARNING: Dynamic environment variables may or may not be nullified within
+a parallel thread.
+This is due to the underlying threading implementation (`lparallel'); please
+defer to `lparallel' and `bordeaux-threads' for the behavior of thread
+variables."
   (declare (ignore sequence ordered))
   (screamer-error
    "P-A-MEMBER-OF is a nondeterministic function. As such, it must be called~%~
@@ -175,9 +174,7 @@ variables relative to the main thread."
           (escapes (lparallel.queue:make-queue))
           (accumulation-strategy (gethash :screamer-accumulation-strategy *nondeterministic-context* nil))
           ;; Get the actual type of accumulator
-          (accumulation-type (typecase accumulation-strategy
-                               (list (first accumulation-strategy))
-                               (t accumulation-strategy)))
+          (accumulation-type (first accumulation-strategy))
           (max-results (and (member accumulation-type '(:n-values))
                             (second accumulation-strategy)))
           ;; Store context lexically to copy it into the lparallel futures
@@ -217,7 +214,11 @@ variables relative to the main thread."
                    (*last-value-cons* nil)
                    (*screamer-max-failures* max-failures)
                    (escaped t)
-                   (*nondeterministic-context* (serapeum:dict)))
+                   (*nondeterministic-context* (serapeum:dict))
+                   ;; Trackers for incrementally publishing
+                   ;; collected `*screamer-results*'
+                   accumulator-config-tracker
+                   (last-screamer-results-size 0))
               ;; Copy over the nondeterministic context
               (when context
                 (maphash (lambda (k v)
@@ -225,6 +226,9 @@ variables relative to the main thread."
                              (list (setf (gethash k *nondeterministic-context*) (copy-tree v)))
                              (t (setf (gethash k *nondeterministic-context*) v))))
                          context))
+              ;; Track the starting `:screamer-accumulation-strategy'
+              ;; so we know if we're inside a nested accumulator
+              (setf accumulator-config-tracker (gethash :screamer-accumulation-strategy *nondeterministic-context*))
 
               ;; FIXME: Modify the continuation to check a lexical
               ;; escape value (or just check if `escapes' is non-empty?),
@@ -234,7 +238,21 @@ variables relative to the main thread."
               (when-failing ((unless (lparallel.queue:queue-empty-p escapes)
                                ;; Return the results with the escape in case
                                ;; some inner form needs them
-                               (escape *screamer-results*)))
+                               (escape *screamer-results*))
+
+                              ;; Only publish incrementally when unordered and
+                              ;; in the same Screamer accumulation context as
+                              ;; this thread started with
+                              (when (and (not ordered)
+                                         (eql accumulator-config-tracker
+                                              (gethash :screamer-accumulation-strategy *nondeterministic-context*)))
+                                ;; When new values have been added
+                                (when (> (length *screamer-results*) last-screamer-results-size)
+                                  ;; Push the new values to the queue
+                                  (dolist (result (subseq *screamer-results* last-screamer-results-size))
+                                    (lparallel.queue:push-queue result q))
+                                  ;; Update the result-count tracker
+                                  (setf last-screamer-results-size (length *screamer-results*)))))
                 (catch '%escape
                   (choice-point (funcall continuation el))
                   (setf escaped nil)))
@@ -249,9 +267,10 @@ variables relative to the main thread."
                 (lparallel.queue:push-queue 1 escapes))
               ;; (print (list "escaped-thread" *screamer-results*))
 
-              ;; When returning unordered results, use `q' to accumulate values
+              ;; Add to the unordered-result queue any values that weren't
+              ;; added in `when-failing' for whatever reason
               (unless ordered
-                (dolist (result *screamer-results*)
+                (dolist (result (subseq *screamer-results* last-screamer-results-size))
                   (lparallel.queue:push-queue result q)))
 
               ;; Return screamer-results for when we're returning answers in order
@@ -346,7 +365,10 @@ variables relative to the main thread."
 (cl:defmacro p-either (&rest options)
   "Like EITHER, but runs all options in parallel.
 Does NOT return the results from each member of
-OPTIONS in order."
+OPTIONS in order.
+Behaves equivalently to `p-a-member-of' with
+ORDERED=NIL and each element of options evaluated
+within its corresponding thread."
   `(funcall-nondeterministic (p-a-member-of (list ,@(iter:iter (iter:for opt in options) (iter:collect `(lambda () ,opt))))
                                             :ordered nil)))
 
