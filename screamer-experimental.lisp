@@ -383,13 +383,17 @@ within its corresponding thread."
 how many threads to run at once"
   (let ((high (+ low *maximum-discretization-range*)))
     (declare (dynamic-extent high))
-    (either (p-an-integer-between low (1- high)) (p-an-integer-above high))))
+    (either
+      (p-a-member-of (alexandria:iota *maximum-discretization-range* :start low))
+      (p-an-integer-above high))))
 (defun p-an-integer-below (high)
   "Note: Using `*maximum-discretization-range*' to decide
 how many threads to run at once"
   (let ((low (- high *maximum-discretization-range*)))
     (declare (dynamic-extent high))
-    (either (p-an-integer-between (1+ low) high) (p-an-integer-below low))))
+    (either
+      (p-a-member-of (nreverse (alexandria:iota *maximum-discretization-range* :start (1+ low))))
+      (p-an-integer-below low))))
 
 
 (export '(collect-trail
