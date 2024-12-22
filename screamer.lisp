@@ -1461,110 +1461,110 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
   (destructuring-bind (form *screamer-macroexpansions*)
       (expand-lexical-environments form environment)
     ;; (print (list 'expansion-done 'form form 'expansions-known *screamer-macroexpansions*))
-   (cond
-     ((self-evaluating? form) (funcall map-function form 'quote))
-     ((symbolp form) (funcall map-function form 'variable))
+    (cond
+      ((self-evaluating? form) (funcall map-function form 'quote))
+      ((symbolp form) (funcall map-function form 'variable))
 
-    ((eq (first form) 'block)
-     (walk-block
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'catch)
-     (walk-catch
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'eval-when)
-     (walk-eval-when
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'flet)
-     (walk-flet/labels
-      map-function reduce-function screamer? partial? nested? form environment
-      'flet))
-    ((eq (first form) 'function)
-     (walk-function
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'go) (walk-go map-function form))
-    ((eq (first form) 'if)
-     (walk-if map-function reduce-function screamer? partial? nested? form
-              environment))
-    ((eq (first form) 'labels)
-     (walk-flet/labels
-      map-function reduce-function screamer? partial? nested? form environment
-      'labels))
-    ((eq (first form) 'let)
-     (walk-let/let*
-      map-function reduce-function screamer? partial? nested? form environment
-      'let))
-    ((eq (first form) 'let*)
-     (walk-let/let*
-      map-function reduce-function screamer? partial? nested? form environment
-      'let*))
-    ;; needs work: This is a temporary kludge to support MCL.
-    ((and (eq (first form) 'locally) (null (fourth form)))
-     (walk map-function reduce-function screamer? partial? nested? (third form)
-           environment))
-    ((eq (first form) 'multiple-value-call)
-     (walk-multiple-value-call
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'multiple-value-prog1)
-     (walk-multiple-value-prog1
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'progn)
-     (walk-progn
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'progv)
-     (walk-progv
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'quote) (walk-quote map-function form))
-    ((eq (first form) 'return-from)
-     (walk-return-from
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'setq)
-     (walk-setq
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'tagbody)
-     (walk-tagbody
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'the)
-     (walk-the
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'throw)
-     (walk-throw
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((eq (first form) 'unwind-protect)
-     (walk-unwind-protect
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((and screamer? (eq (first form) 'for-effects))
-     (walk-for-effects
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((and screamer? (eq (first form) 'setf))
-     (walk-setf
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((and screamer? (eq (first form) 'local))
-     (let ((*local?* t))
+      ((eq (first form) 'block)
+       (walk-block
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'catch)
+       (walk-catch
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'eval-when)
+       (walk-eval-when
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'flet)
+       (walk-flet/labels
+        map-function reduce-function screamer? partial? nested? form environment
+        'flet))
+      ((eq (first form) 'function)
+       (walk-function
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'go) (walk-go map-function form))
+      ((eq (first form) 'if)
+       (walk-if map-function reduce-function screamer? partial? nested? form
+                environment))
+      ((eq (first form) 'labels)
+       (walk-flet/labels
+        map-function reduce-function screamer? partial? nested? form environment
+        'labels))
+      ((eq (first form) 'let)
+       (walk-let/let*
+        map-function reduce-function screamer? partial? nested? form environment
+        'let))
+      ((eq (first form) 'let*)
+       (walk-let/let*
+        map-function reduce-function screamer? partial? nested? form environment
+        'let*))
+      ;; needs work: This is a temporary kludge to support MCL.
+      ((and (eq (first form) 'locally) (null (fourth form)))
+       (walk map-function reduce-function screamer? partial? nested? (third form)
+             environment))
+      ((eq (first form) 'multiple-value-call)
+       (walk-multiple-value-call
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'multiple-value-prog1)
+       (walk-multiple-value-prog1
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'progn)
        (walk-progn
-        map-function reduce-function screamer? partial? nested? form
-        environment)))
-    ((and screamer? (eq (first form) 'global))
-     (let ((*local?* nil))
-       (walk-progn
-        map-function reduce-function screamer? partial? nested? form
-        environment)))
-    ((and screamer? (eq (first form) 'multiple-value-call-nondeterministic))
-     (walk-multiple-value-call-nondeterministic
-      map-function reduce-function screamer? partial? nested? form environment))
-    ((and partial? (eq (first form) 'full)) (walk-full map-function form))
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'progv)
+       (walk-progv
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'quote) (walk-quote map-function form))
+      ((eq (first form) 'return-from)
+       (walk-return-from
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'setq)
+       (walk-setq
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'tagbody)
+       (walk-tagbody
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'the)
+       (walk-the
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'throw)
+       (walk-throw
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'unwind-protect)
+       (walk-unwind-protect
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((and screamer? (eq (first form) 'for-effects))
+       (walk-for-effects
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((and screamer? (eq (first form) 'setf))
+       (walk-setf
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((and screamer? (eq (first form) 'local))
+       (let ((*local?* t))
+         (walk-progn
+          map-function reduce-function screamer? partial? nested? form
+          environment)))
+      ((and screamer? (eq (first form) 'global))
+       (let ((*local?* nil))
+         (walk-progn
+          map-function reduce-function screamer? partial? nested? form
+          environment)))
+      ((and screamer? (eq (first form) 'multiple-value-call-nondeterministic))
+       (walk-multiple-value-call-nondeterministic
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((and partial? (eq (first form) 'full)) (walk-full map-function form))
 
-    ;; Dealing with macros
-    ((valid-macro? form environment)
-     ;; Walk macro call
-     (walk-macro-call
-      map-function reduce-function screamer? partial? nested? form environment))
+      ;; Dealing with macros
+      ((valid-macro? form environment)
+       ;; Walk macro call
+       (walk-macro-call
+        map-function reduce-function screamer? partial? nested? form environment))
 
-    ((special-operator-p (first form))
-     (error "Cannot (currently) handle the special form ~S" (first form)))
+      ((special-operator-p (first form))
+       (error "Cannot (currently) handle the special form ~S" (first form)))
 
-    (t (walk-function-call
-        map-function reduce-function screamer? partial? nested? form
-        environment)))))
+      (t (walk-function-call
+          map-function reduce-function screamer? partial? nested? form
+          environment)))))
 
 (defun-compile-time process-subforms (function form form-type environment)
   (case form-type
@@ -3596,7 +3596,7 @@ extract information from the collected trails."
                          (zero-one (second elem)))
                     (second elem)))))
     (the number
-     (or (find-if #'identity trail :from-end t :key #'get-trail-prob) 1))))
+         (or (find-if #'identity trail :from-end t :key #'get-trail-prob) 1))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'factor-prob))
@@ -4105,11 +4105,11 @@ either a list or a vector."
       (let ((n (length sequence)))
         (if (zerop n)
             (fail)
-          (let ((n (1- n)))
-            (choice-point-external
-             (dotimes (i n)
-               (choice-point-internal (call-continuation continuation (aref sequence i)))))
-            (call-continuation continuation (aref sequence n))))))
+            (let ((n (1- n)))
+              (choice-point-external
+               (dotimes (i n)
+                 (choice-point-internal (call-continuation continuation (aref sequence i)))))
+              (call-continuation continuation (aref sequence n))))))
      ((serapeum:sequencep sequence)
       (let ((n (length sequence)))
         (if (zerop n)
@@ -5716,13 +5716,13 @@ Otherwise returns the value of X."
   ;;       Gaussian integers from other complex numbers we could whenever X or
   ;;       Y was not a Gaussian integer.
   (when (and (or (variable-noninteger? x) (variable-noninteger? y))
-           (or (variable-real? x) (variable-real? y)))
-      (restrict-noninteger! z))
+             (or (variable-real? x) (variable-real? y)))
+    (restrict-noninteger! z))
   (when (and (variable-real? x) (variable-real? y)) (restrict-real! z))
   ;; NOTE: Ditto.
   (when (and (or (variable-nonreal? x) (variable-nonreal? y))
-           (or (variable-real? x) (variable-real? y)))
-      (restrict-nonreal! z))
+             (or (variable-real? x) (variable-real? y)))
+    (restrict-nonreal! z))
   (when (and (variable-real? x) (variable-real? y) (variable-real? z))
     (let ((old-bounds (list (variable-lower-bound z)
                             (variable-upper-bound z))))
@@ -5752,10 +5752,10 @@ Otherwise returns the value of X."
   ;;       numbers we could make such an assertion whenever either X or Y was
   ;;       not a Gaussian integer.
   (when (and (variable-integer? z) (or (variable-integer? x) (variable-integer? y)))
-      (restrict-integer! x))
+    (restrict-integer! x))
   ;; NOTE: Ditto.
   (when (and (variable-real? z) (or (variable-real? x) (variable-real? y)))
-      (restrict-real! x))
+    (restrict-real! x))
   (when (and (variable-real? x) (variable-real? y) (variable-real? z))
     (let ((old-bounds (list (variable-lower-bound x)
                             (variable-upper-bound x))))
@@ -7185,12 +7185,12 @@ in the process of determining a good search order."
 
 (defun static-ordering-internal (variables force-function)
   (when variables
-      (let ((variable (value-of (first variables))))
-        (etypecase variable
-          (variable
-           (funcall-nondeterministic force-function variable)
-           (static-ordering-internal variables force-function))
-          (t (static-ordering-internal (rest variables) force-function))))))
+    (let ((variable (value-of (first variables))))
+      (etypecase variable
+        (variable
+         (funcall-nondeterministic force-function variable)
+         (static-ordering-internal variables force-function))
+        (t (static-ordering-internal (rest variables) force-function))))))
 
 (defun static-ordering (force-function)
   "Returns an ordering force function based on FORCE-FUNCTION.
@@ -7460,7 +7460,7 @@ restricted to be consistent with other arguments."
               (attach-noticer!
                #'(lambda ()
                    (when (every #'bound? arguments)
-                       (assert!-equalv z (apply f (mapcar #'value-of arguments)))))
+                     (assert!-equalv z (apply f (mapcar #'value-of arguments)))))
                argument))
             z)))))
 
@@ -8347,7 +8347,7 @@ Works on nested sequences which potentially contain variables, e.g. (all-differe
                     (iota (array-total-size x))))
             ((and (hash-table-p x) (hash-table-p y) (equal (hash-table-keys x) (hash-table-keys y)))
              ;; If they have the same keys, equate the value of each key
-            (every (lambda (k) (known?-equalv (gethash k x) (gethash k y))) (hash-table-keys x)))
+             (every (lambda (k) (known?-equalv (gethash k x) (gethash k y))) (hash-table-keys x)))
             (t (equal x y)))))
 
 (defun assert!-equalv (x y)
