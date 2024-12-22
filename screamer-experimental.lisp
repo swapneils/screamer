@@ -121,19 +121,19 @@ NOTE: Has not been tested with screamer::defun"
    "P-A-MEMBER-OF is a nondeterministic function. As such, it must be called~%~
    only from a nondeterministic context."))
 
-;;; FIXME: Doesn't work with one-value or n-values!
 (cl:defun p-a-member-of-nondeterministic (continuation sequence)
+  (declare (optimize (speed 3) (space 3)))
   (serapeum:nest
-   (let* ((sequence (value-of sequence)))
-     (unless (serapeum:sequencep sequence)
-       (fail)))
+   (let* ((sequence (value-of sequence))))
+   (serapeum:if-not (serapeum:sequencep sequence) (fail))
    (if (emptyp sequence) (fail))
    ;; Make a form to store the generated futures
    ;; FIXME: Currently futures keep running even after
    ;; leaving the nondeterministic form, unless they fail,
    ;; otherwise throw a signal, or finish.
+   ;; NOTE: Mitigated by forcing all futures
    (let* (futures
-          (q (lparallel.queue:make-queue))
+          ;; (q (lparallel.queue:make-queue))
           (escapes (lparallel.queue:make-queue))
           (accumulation-strategy (gethash :screamer-accumulation-strategy *nondeterministic-context* nil))
           ;; Get the actual type of accumulator
@@ -143,8 +143,18 @@ NOTE: Has not been tested with screamer::defun"
           (max-results (and (member accumulation-type '(:n-values))
                             (second accumulation-strategy)))
           ;; Store context lexically to copy it into the lparallel futures
-          (context (copy-hash-table *nondeterministic-context*)))
-     (declare (dynamic-extent futures q))
+          (context (copy-hash-table *nondeterministic-context*))
+          ;; Bind max failures dynamically
+          ;; TODO: Find a way to change *screamer-max-failures*
+          ;; within futures? If we could do this it would
+          ;; let us short-circuit infinite searches
+          ;; once the top-level has succeeded
+          ;; (*screamer-max-failures* *screamer-max-failures*)
+          ;; Bind max failures lexically to copy into future
+          (max-failures *screamer-max-failures*))
+     (declare (dynamic-extent futures context)
+              ;; (dynamic-extent q)
+              )
      (iter:iter (iter:for el in-sequence sequence)
        ;; Collect every promise into `futures'
        (push
@@ -160,14 +170,15 @@ NOTE: Has not been tested with screamer::defun"
                    ;; into threads
                    (*pure-cache*
                      (when *pure-cache*
-                       nil
-                       ;; (copy-tree *pure-cache*)
+                       ;; nil
+                       (copy-tree *pure-cache*)
                        ))
                    ;; Copy trail to avoid mangling between threads
                    (*trail* (copy-array *trail*))
                    ;; Copy value-collection objects
                    (*screamer-results* nil)
                    (*last-value-cons* nil)
+                   (*screamer-max-failures* max-failures)
                    (escaped t)
                    (*nondeterministic-context* (serapeum:dict)))
               ;; Copy over the nondeterministic context
@@ -178,40 +189,97 @@ NOTE: Has not been tested with screamer::defun"
                              (t (setf (gethash k *nondeterministic-context*) v))))
                          context))
 
+              ;; FIXME: Modify the continuation to check a lexical
+              ;; escape value (or just check if `escapes' is non-empty?),
+              ;; and also generate a continuation doing the same thing
+              ;; after the next step, so we can short-circuit infinite
+              ;; searches if the main thread has the answers we want
               (catch '%escape
                 (choice-point (funcall continuation el))
                 (setf escaped nil))
               ;; Mark the escape
-              (when escaped (lparallel.queue:push-queue 1 escapes))
+              (when (and escaped
+                         ;; NOTE: Not counting escapes from n-values
+                         ;; forms unless `max-results' wasn't reached,
+                         ;; since they use `%escape' to exit once they
+                         ;; have enough results.
+                         (or (not max-results)
+                             (> (length *screamer-results*) max-results)))
+                (lparallel.queue:push-queue 1 escapes))
+              ;; (print (list "escaped-thread" *screamer-results*))
 
-              (dolist (result *screamer-results*)
-                (lparallel.queue:push-queue result q)))))
+              ;; (dolist (result *screamer-results*)
+              ;;   (lparallel.queue:push-queue result q))
+
+              ;; Return screamer-results for when we're returning answers in order
+              *screamer-results*)))
         futures))
-     ;; FIXME: Currently forcing futures to avoid the environment being deinstantiated,
-     ;; causing errors in the future threads
-     (mapcar #'lparallel:force futures)
+
+     ;; NOTE: Getting future values in order
+     ;; NOTE: We currently need to force all futures anyway, given
+     ;; we can't cancel the futures or set `*screamer-max-results*'
+     ;; to 0 in them and if we just leave the closure without them
+     ;; finishing then the future has variable-mutation issues.
+     ;; Sort futures since they were pushed in reverse order
+     (serapeum:callf #'nreverse futures)
      (iter:iter
-       (iter:until
-        (and (every #'lparallel:fulfilledp futures)
-             (lparallel.queue:queue-empty-p q)))
-       ;; Wait for queue to not be empty, then get values from it
-       ;; NOTE: While this means the main thread is constantly
-       ;; running instead of idling, it also means we don't need
-       ;; to worry about cases where the queue doesn't get
-       ;; populated but all futures exit
-       (when (not (lparallel.queue:queue-empty-p q))
-         (appendf *screamer-results* (list (lparallel.queue:pop-queue q)))
-         ;; When max result count is reached, discard extra values and decide to escape
-         (when (and max-results (> (length *screamer-results*) max-results))
-           (setf *screamer-results* (subseq *screamer-results* 0 max-results))
-           (lparallel.queue:push-queue 1 escapes))
-         ;; Propagate escapes
-         (unless (lparallel.queue:queue-empty-p escapes)
-           ;; NOTE: We return the result list since some forms
-           ;; use `%escape' to return results and others
-           ;; ignore the returned value.
-           (throw '%escape *screamer-results*)))
-       (setf *last-value-cons* (last *screamer-results*)))
+       (iter:for f in futures)
+
+       ;; Force the future and collect its results
+       (iter:for result = (lparallel:force f))
+       (appendf *screamer-results* result)
+
+       ;; When max result count is reached, discard extra values and decide to escape
+       (when (and max-results (> (length *screamer-results*) max-results))
+         (serapeum:callf #'subseq *screamer-results* 0 max-results)
+         (lparallel.queue:push-queue 1 escapes))
+
+       ;; Update `*last-value-cons*' for bookkeeping reasons
+       (setf *last-value-cons* (last *screamer-results*))
+
+       ;; Propagate escapes
+       (unless (lparallel.queue:queue-empty-p escapes)
+         ;; Force all futures to avoid the context being dereferenced while
+         ;; the future still needs it
+         (mapcar #'lparallel:force futures)
+         ;; NOTE: We return the result list since some forms
+         ;; use `%escape' to return results and others
+         ;; ignore the returned value.
+         (throw '%escape *screamer-results*)))
+
+     ;; NOTE: Original aggregation process, gets results out of order
+     ;; (iter:iter
+     ;;   (iter:until
+     ;;    (and (every #'lparallel:fulfilledp futures)
+     ;;         (lparallel.queue:queue-empty-p q)))
+     ;;   ;; Force the first unforced future
+     ;;   (let ((f (some (notf #'lparallel:fulfilledp) futures)))
+     ;;     (when f (lparallel:force f)))
+
+     ;;   ;; Wait for queue to not be empty, then get values from it
+     ;;   ;; NOTE: While this means the main thread is constantly
+     ;;   ;; running instead of idling, it also means we don't need
+     ;;   ;; to worry about cases where the queue doesn't get
+     ;;   ;; populated but all futures exit
+     ;;   (when (not (lparallel.queue:queue-empty-p q))
+     ;;     ;; Collect the queue's top value into `*screamer-results*'
+     ;;     (appendf *screamer-results* (list (lparallel.queue:pop-queue q)))
+
+     ;;     ;; When max result count is reached, discard extra values and decide to escape
+     ;;     (when (and max-results (> (length *screamer-results*) max-results))
+     ;;       (serapeum:callf #'subseq *screamer-results* 0 max-results)
+     ;;       (lparallel.queue:push-queue 1 escapes))
+
+     ;;     ;; Update `*last-value-cons*' for bookkeeping reasons
+     ;;     (setf *last-value-cons* (last *screamer-results*)))
+
+     ;;   ;; Propagate escapes
+     ;;   (unless (lparallel.queue:queue-empty-p escapes)
+     ;;     ;; NOTE: We return the result list since some forms
+     ;;     ;; use `%escape' to return results and others
+     ;;     ;; ignore the returned value.
+     ;;     (throw '%escape *screamer-results*)))
+
      ;; After all choice points are attempted, fail
      (fail))))
 
