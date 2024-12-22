@@ -266,7 +266,7 @@ context if you need them."
             ;; NOTE: We return the result list, since some forms
             ;; use `%escape' to return results while others
             ;; ignore the returned value.
-            (throw '%escape *screamer-results*))))
+            (escape *screamer-results*))))
 
        ;; Getting results out of order
        ((not ordered)
@@ -306,7 +306,7 @@ context if you need them."
             ;; NOTE: We return the result list since some forms
             ;; use `%escape' to return results and others
             ;; ignore the returned value.
-            (throw '%escape *screamer-results*)))))
+            (escape *screamer-results*)))))
 
      ;; After all choice points are attempted, fail
      (fail))))
