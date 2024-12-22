@@ -203,14 +203,8 @@ variables."
                  (let* (
                         ;; Copy `*pure-cache*' in case the implementation
                         ;; doesn't use thread-safe hash-tables
-                        ;; FIXME: This currently causes memory faults
-                        ;; in SBCL, so pure-cache isn't copied
-                        ;; into threads
                         (*pure-cache*
-                          (when *pure-cache*
-                            ;; nil
-                            (copy-tree *pure-cache*)
-                            ))
+                          (when *pure-cache* (copy-tree *pure-cache*)))
                         ;; Copy trail to avoid mangling between threads
                         (*trail* (copy-array *trail*))
                         ;; Copy value-collection objects
@@ -234,11 +228,6 @@ variables."
                    ;; so we know if we're inside a nested accumulator
                    (setf accumulator-config-tracker (gethash :screamer-accumulation-strategy *nondeterministic-context*))
 
-                   ;; FIXME: Modify the continuation to check a lexical
-                   ;; escape value (or just check if `escapes' is non-empty?),
-                   ;; and also generate a continuation doing the same thing
-                   ;; after the next step, so we can short-circuit infinite
-                   ;; searches if the main thread has the answers we want
                    (when-failing ((unless (lparallel.queue:queue-empty-p escapes)
                                     ;; Return the results with the escape in case
                                     ;; some inner form needs them
@@ -262,10 +251,10 @@ variables."
                        (setf escaped nil)))
                    ;; Mark the escape
                    (when (and escaped
-                              ;; NOTE: Not counting escapes from n-values
-                              ;; forms unless `max-results' wasn't reached,
-                              ;; since they use `%escape' to exit once they
-                              ;; have enough results.
+                              ;; NOTE: Not counting escapes from `n-values'
+                              ;; forms if `max-results' was reached, since
+                              ;; they use `%escape' to exit once they have
+                              ;; enough results.
                               (or (not max-results)
                                   (> (length *screamer-results*) max-results)))
                      (lparallel.queue:push-queue 1 escapes))
@@ -320,18 +309,8 @@ variables."
                (iter:until
                 (and (every #'lparallel:fulfilledp futures)
                      (lparallel.queue:queue-empty-p q)))
-               ;; NOTE: Not forcing the first unforced future
-               ;; so that if it's unsolvable we don't get
-               ;; stuck.
-               ;; Force the first unforced future
-               ;; (let ((f (some (notf #'lparallel:fulfilledp) futures)))
-               ;;   (when f (lparallel:force f)))
 
                ;; Wait for queue to not be empty, then get values from it
-               ;; NOTE: While this means the main thread is constantly
-               ;; running instead of idling, it also means we don't need
-               ;; to worry about cases where the queue doesn't get
-               ;; populated but all futures exit
                (when (not (lparallel.queue:queue-empty-p q))
                  ;; Collect the queue's top value into `*screamer-results*'
                  (appendf *screamer-results* (list (lparallel.queue:pop-queue q)))
