@@ -297,9 +297,12 @@ variables relative to the main thread."
           (iter:until
            (and (every #'lparallel:fulfilledp futures)
                 (lparallel.queue:queue-empty-p q)))
+          ;; NOTE: Not forcing the first unforced future
+          ;; so that if it's unsolvable we don't get
+          ;; stuck.
           ;; Force the first unforced future
-          (let ((f (some (notf #'lparallel:fulfilledp) futures)))
-            (when f (lparallel:force f)))
+          ;; (let ((f (some (notf #'lparallel:fulfilledp) futures)))
+          ;;   (when f (lparallel:force f)))
 
           ;; Wait for queue to not be empty, then get values from it
           ;; NOTE: While this means the main thread is constantly
