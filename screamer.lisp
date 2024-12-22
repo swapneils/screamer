@@ -4541,7 +4541,11 @@ ratio.")
 
 (defvar *maximum-discretization-range* 20
   "Discretize integer variables whose range is not greater than this number.
-Discretize all integer variables if NIL. Must be an integer or NIL.")
+Discretize all integer variables if NIL. Must be an integer or NIL.
+
+For some `p-screamer' constructs that can produce an unbounded count of values,
+this variable is also used to determine how many values are run in parallel at
+a time.")
 
 (defvar *strategy* :gfc
   "Strategy to use for FUNCALLV and APPLYV. Either :GFC for Generalized

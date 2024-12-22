@@ -378,6 +378,19 @@ within its corresponding thread."
     (if (> low high) (fail)
         (p-a-member-of (alexandria:iota (1+ (- high low)) :start low)))))
 
+(defun p-an-integer-above (low)
+  "Note: Using `*maximum-discretization-range*' to decide
+how many threads to run at once"
+  (let ((high (+ low *maximum-discretization-range*)))
+    (declare (dynamic-extent high))
+    (either (p-an-integer-between low (1- high)) (p-an-integer-above high))))
+(defun p-an-integer-below (high)
+  "Note: Using `*maximum-discretization-range*' to decide
+how many threads to run at once"
+  (let ((low (- high *maximum-discretization-range*)))
+    (declare (dynamic-extent high))
+    (either (p-an-integer-between (1+ low) high) (p-an-integer-below low))))
+
 
 (export '(collect-trail
           bounded?
@@ -393,9 +406,9 @@ within its corresponding thread."
           *possibility-consolidator*
           *screamer-max-failures*
           call/cc
-          p-a-member-of
+          p-a-member-of p-either
           p-an-integer-between
-          p-either))
+          p-an-integer-above p-an-integer-below))
 
 
 
