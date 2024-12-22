@@ -150,11 +150,9 @@ WARNING: Lexical environments are shared between
 parallel threads, and dynamic environment variables
 may be nullified within a parallel thread. This is
 due to the underlying threading implementation
-(`lparallel').
-Either avoid mutating values outside the thread itself
-or ensure that such mutations are thread-safe, and
-make sure to copy dynamic bindings into the thread
-context if you need them."
+(`lparallel'); please defer to `lparallel' and
+`bordeaux-threads' for the behavior of thread
+variables relative to the main thread."
   (declare (ignore sequence ordered))
   (screamer-error
    "P-A-MEMBER-OF is a nondeterministic function. As such, it must be called~%~
