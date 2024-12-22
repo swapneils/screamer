@@ -103,6 +103,17 @@ Example code:
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'p-a-member-of))
 
+;;; TODO: Add a `when-succeeding' form that allows you
+;;; to take additional actions when a collection form
+;;; is succeeding. This would allow collecting intermediate
+;;; results from searches, which would be more efficient
+;;; in the `ORDERED'=`NIL' case since you don't need
+;;; to wait for every thread to reach `max-results'
+;;; or run out of possibilities before accumulating its
+;;; values.
+;;; NOTE: This also needs some way to not affect
+;;; any nested Screamer accumulation forms within
+;;; the one you want to use `when-succeeding' for.
 (cl:defun p-a-member-of (sequence &key (ordered t))
   "EXPERIMENTAL
 Parallel version of a-member-of.
@@ -121,6 +132,19 @@ invocation are undefined.
 Does not exit until all nondeterministic paths have
 succeeded, even when within a form that does not ordinarily
 require completing all nondeterministic paths to return.
+
+When ORDERED is T, results are only collected from threads
+in the order of their corresponding members of SEQUENCE.
+When it is NIL, each thread's results will be collected
+on completion regardless of where its corresponding value
+is in SEQUENCE.
+
+WARNING: A thread's results are only collected once it is
+completed! If some member of SEQUENCE does not finish executing,
+its intermediate results will not be collected.
+Note that if `p-a-member-of' is used within forms such as `one-value'
+or `n-values', their behavior of only requiring a certain number
+of results is carried over into
 
 WARNING: Lexical environments are shared between
 parallel threads, and dynamic environment variables
@@ -237,6 +261,7 @@ context if you need them."
         futures))
      ;; Sort futures since they were pushed in reverse order
      (serapeum:callf #'nreverse futures)
+
      (cond
        ;; Getting results in order
        (ordered
