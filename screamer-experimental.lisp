@@ -107,6 +107,13 @@ Example code:
   "EXPERIMENTAL
 Parallel version of a-member-of.
 
+All forms which would be evaluated after this one
+are instead evaluated in multiple different threads,
+one for each member of SEQUENCE. The results from
+these forms are collected into `*screamer-results*'
+as per the behavior of the closest parent Screamer
+aggregation form (i.e. `all-values', `n-values', etc.).
+
 The consequences of variables defined before this
 function's invocation being mutated after said
 invocation are undefined.
@@ -115,7 +122,15 @@ Does not exit until all nondeterministic paths have
 succeeded, even when within a form that does not ordinarily
 require completing all nondeterministic paths to return.
 
-NOTE: Has not been tested with screamer::defun"
+WARNING: Lexical environments are shared between
+parallel threads, and dynamic environment variables
+may be nullified within a parallel thread. This is
+due to the underlying threading implementation
+(`lparallel').
+Either avoid mutating values outside the thread itself
+or ensure that such mutations are thread-safe, and
+make sure to copy dynamic bindings into the thread
+context if you need them."
   (declare (ignore sequence))
   (screamer-error
    "P-A-MEMBER-OF is a nondeterministic function. As such, it must be called~%~
