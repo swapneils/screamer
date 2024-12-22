@@ -341,7 +341,11 @@ variables relative to the main thread."
        (t (fail))))))
 
 (cl:defmacro p-either (&rest options)
-  `(funcall-nondeterministic (p-a-member-of (list ,@(iter:iter (iter:for opt in options) (iter:collect `(lambda () ,opt)))))))
+  "Like EITHER, but runs all options in parallel.
+Does NOT return the results from each member of
+OPTIONS in order."
+  `(funcall-nondeterministic (p-a-member-of (list ,@(iter:iter (iter:for opt in options) (iter:collect `(lambda () ,opt))))
+                                            :ordered nil)))
 
 (defun p-an-integer-between (low high)
   (let ((low (ceiling (value-of low)))
