@@ -12,8 +12,8 @@
 
 (deftest test-nested-parallelism ()
   (lparallel.kernel-util:with-temp-kernel ((serapeum:count-cpus))
-    (is (equal (append (iota 1000) (iota 2000))
-               (all-values (p-an-integer-between 0 (1- (p-either 1000 2000))))))
+    (is (equal (sort (append (iota 1000) (iota 2000)) #'<)
+               (sort (all-values (p-an-integer-between 0 (1- (p-either 1000 2000)))) #'<)))
     (is (equal (list :hi :hi :hi :hi)
                (all-values (p-a-member-of '(1 2)) (p-a-member-of '(3 4)) :hi)))))
 
