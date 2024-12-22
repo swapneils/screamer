@@ -3231,7 +3231,7 @@ N."
                   ;;           *last-value-cons* (rest *last-value-cons*)))
                   (when (>= (length ,value-list) (second ,acc-strat))
                     ;; (return-from n-values ,value-list)
-                    (throw '%escape ,value-list))))))
+                    (escape ,value-list))))))
           ,(if default-on-failure default value-list))))))
 
 (defmacro-compile-time n-values-prob ((n &key (default nil default-on-failure)) &body body)
@@ -3270,7 +3270,7 @@ See the docstring of `ALL-VALUES-PROB' for more details."
                     (when (>= (length ,value-list) (second ,acc-strat))
                       ;; Return to enclosing trail context
                       (unwind-trail-to ,pointer)
-                      (throw '%escape ,value-list)))))
+                      (escape ,value-list)))))
               ,(if default-on-failure default value-list))
            ;; Return to enclosing trail context
            (unwind-trail-to ,pointer))))))
@@ -3744,12 +3744,30 @@ PRINT-VALUES is analogous to the standard top-level user interface in Prolog."
       (either-prob-internal (t p) (nil (- 1 p)))
       (either-prob-internal (nil (- 1 p)) (t p))))
 
+(defvar-compile-time *escape*
+    (lambda (result)
+      (throw '%escape result)))
+
+(defun-compile-time escape (result)
+  "Throws an `%escape' tag. Used to ensure
+forms like `with-failing' also affect
+escapes."
+  (funcall *escape* result))
+
+(defmacro-compile-time when-escaping ((&body escaping-forms) &body body)
+  "Whenever ESCAPE is called during execution of BODY, executes ESCAPING-FORMS
+before unwinding."
+  (let ((old-escape (gensym "ESCAPE")))
+    `(let* ((,old-escape *escape*)
+            (*escape* (lambda (result) ,@escaping-forms (funcall ,old-escape result))))
+       ,@body)))
+
 (defvar-compile-time *fail*
     (lambda ()
       (when *screamer-max-failures*
         (incf *screamer-failures*)
         (when (> *screamer-failures* *screamer-max-failures*)
-          (throw '%escape nil)))
+          (escape nil)))
       (if *nondeterministic-context*
           (throw '%fail nil)
           (error "Cannot FAIL: no choice-point to backtrack to."))))
@@ -3765,7 +3783,10 @@ Calling FAIL when there is no choice-point to backtrack to signals an error."
 
 (defmacro-compile-time when-failing ((&body failing-forms) &body body)
   "Whenever FAIL is called during execution of BODY, executes FAILING-FORMS
-before unwinding."
+before unwinding.
+
+Note that this does not catch invocations of ESCAPE. For those, use
+WHEN-ESCAPING."
   (let ((old-fail (gensym "FAIL")))
     `(let* ((,old-fail *fail*)
             (*fail* (lambda () ,@failing-forms (funcall ,old-fail))))
