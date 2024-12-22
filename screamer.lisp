@@ -4141,8 +4141,7 @@ either a list or a vector."
 
 (cl:defun a-member-of-prob (sequence)
   "Nondeterministically returns an element of SEQUENCE. The elements are
-returned in the order that they appear in SEQUENCE. The SEQUENCE must be
-either a list or a vector."
+returned in the order that they appear in SEQUENCE."
   (declare (ignore sequence))
   (screamer-error
    "A-MEMBER-OF-PROB is a nondeterministic function. As such, it must be called~%~
@@ -4173,7 +4172,46 @@ either a list or a vector."
              (dotimes (i n)
                (choice-point-internal (call-continuation continuation (aref sequence i)))))
             (call-continuation continuation (aref sequence n))))))
+     ((serapeum:sequencep sequence)
+      (let ((n (length sequence)))
+        (unless (zerop n)
+          (let ((n (1- n)))
+            (choice-point-external
+             (dotimes (i n)
+               (choice-point-internal (call-continuation continuation (elt sequence i)))))
+            (call-continuation continuation (aref sequence n))))))
      (t (error "SEQUENCE must be a sequence")))))
+
+(cl:defun collection-to-sequence (coll)
+  "Converts various collection types to sequences"
+  (etypecase coll
+    (sequence coll)
+    (array
+     (serapeum:with-collector (collect)
+       (dotimes (i (array-total-size coll))
+         (collect (row-major-aref coll i)))))
+    (hash-table (hash-table-keys coll))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declare-nondeterministic 'an-element-of))
+
+(cl:defun an-element-of (collection)
+  "Nondeterministically returns an element of COLLECTION. The elements are
+returned in the order that they appear in COLLECTION.
+
+If COLLECTION is a sequence, this is equivalent to A-MEMBER-OF.
+If COLLECTION is a multidimensional array, the elements are selected in
+row-major order.
+If COLLECTION is a hash-table, the keys are derived via `alxandria:hash-table-keys'.
+Note that this may not maintain key order."
+  (declare (ignore collection))
+  (screamer-error
+   "AN-ELEMENT-OF is a nondeterministic function. As such, it must be called~%~
+   only from a nondeterministic context."))
+
+(cl:defun an-element-of-nondeterministic (continuation collection
+                                          &aux (collection (value-of collection)))
+  (a-member-of-nondeterministic continuation (collection-to-sequence collection)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declare-nondeterministic 'sample))

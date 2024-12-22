@@ -364,6 +364,10 @@ variables."
      ;; we have an unplanned exit
      (mapcar #'lparallel:force futures))))
 
+(defun p-an-element-of (collection)
+  "Parallel version of AN-ELEMENT-OF."
+  (p-a-member-of (collection-to-sequence collection)))
+
 (cl:defmacro p-either (&rest options)
   "Like EITHER, but runs all options in parallel.
 Does NOT return the results from each member of
@@ -407,6 +411,7 @@ how many threads to run at once"
           mapcar-nondeterministic
           pure-values
           pure-one-value
+          an-element-of
           sample
           sample-once
           sample-optimizing
@@ -416,6 +421,7 @@ how many threads to run at once"
           *screamer-max-failures*
           call/cc
           p-a-member-of p-either
+          p-an-element-of
           p-an-integer-between
           p-an-integer-above p-an-integer-below))
 
