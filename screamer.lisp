@@ -9411,3 +9411,59 @@ This is useful for creating patterns to be unified with other structures."
   (all-values (print 'hi) (either 2 3) 4)
   "similar succeeding case"
   (let ((real-value 5)) (all-values (print 'hi) (either 2 3) real-value)))
+
+;;; TODO: Seeing some strange behavior around iteration and
+;;; mutation, not yet sure what the dividing line is between
+;;; working and incorrect
+(serapeum:comment
+  "returns NIL even though the (print coll) works fine"
+  (let ((coll nil))
+    (all-values
+      (let ((coll nil))
+        (local
+          (iter (for i below 4)
+            (for x = (an-integer-between 1 5))
+            (when coll (assert! (necessarily? (> x (a-member-of coll)))))
+            (push x coll)))
+        (print coll))))
+  "returning wrong values"
+  (let ((coll nil))
+    (all-values
+      (let ((coll (local
+                    (iter (for i below 2)
+                      (for x = (an-integer-between 1 3))
+                      (when coll (assert! (necessarily? (> x (a-member-of coll)))))
+                      (collect x)))))
+        coll)))
+  "returning wrong values"
+  (all-values
+    (let ((coll (local
+                  (iter (for i below 2)
+                    (for prev initially 0 then i)
+                    (for x = (an-integer-between 1 3))
+                    (assert! (> x i))
+                    (collect x)))))
+      (assert! (all-different coll))
+      coll))
+  "Note: The above may just be failing due to bad code, the below works fine"
+  (all-values
+    (local
+      (let ((coll (iter
+                    (for i below 10)
+                    (for prev initially 1 then x)
+                    (for started initially nil then t)
+                    (for x = (an-integer-between prev 11))
+                    (when started (assert! (> x prev)))
+                    (collect x))))
+        (assert! (all-different coll))
+        coll)))
+  "The below seems pretty clearly wrong when (assert! (> x prev)) is removed though..."
+  (let ((result-count 5))
+    (all-values
+      (local
+        (iter
+          (for i below (1- result-count))
+          (for prev initially 0 then x)
+          (for x = (an-integer-between (1+ prev) (min result-count (+ 2 prev))))
+          (assert! (> x prev))
+          (collect x))))))
