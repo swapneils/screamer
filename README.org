@@ -45,6 +45,8 @@ See CHANGELOG.org
   - Current arglist: ~((i &key (default '(fail))) &body body)~
   - See the docstring for more details on this form's behavior.
 - Multiple new symbols exported from the ~screamer~ package
+- ~*nondeterministic-context*~ is now a hash-table when non-NIL, rather than
+  just equaling ~t~ as it previously did.
 * Examples
 See http://nikodemus.github.io/screamer/ for some examples of the core Screamer
 functionality.
