@@ -404,6 +404,13 @@ how many threads to run at once"
       (p-a-member-of (nreverse (alexandria:iota *maximum-discretization-range* :start (1+ low))))
       (p-an-integer-below low))))
 
+(defmacro-compile-time lambda-nondeterministic (args &body body)
+  "Defines an unnamed Screamer function-object, e.g. to reuse
+between multiple Screamer forms.
+
+Note that these MUST be called via `funcall-nondeterministic',
+and are incompatible with the standard `funcall'."
+  `(one-value (lambda ,args ,@body)))
 
 (export '(collect-trail
           bounded?
@@ -419,6 +426,7 @@ how many threads to run at once"
           factor-prob
           *possibility-consolidator*
           *screamer-max-failures*
+          lambda-nondeterministic
           call/cc
           p-a-member-of p-either
           p-an-element-of
