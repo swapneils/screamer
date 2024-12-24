@@ -413,6 +413,7 @@ and are incompatible with the standard `funcall'."
   `(one-value (lambda ,args ,@body)))
 
 (export '(collect-trail
+          uniquely?
           bounded?
           grounded?
           mapcar-nondeterministic

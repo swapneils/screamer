@@ -368,12 +368,14 @@ in comparison to `cl:mapcar'"
 
   1. the body of a function defined with SCREAMER::DEFUN
   2. the body of a FOR-EFFECTS macro invocation
-  3. the body of an ALL-VALUES macro invocation
-  4. the first argument of a ONE-VALUE macro invocation
-  5. the body of a PRINT-VALUES macro invocation
-  6. the second argument of an ITH-VALUE macro invocation
-  7. the body of a POSSIBLY? macro invocation
-  8. the body of a NECESSARILY? macro invocation.
+  3. the body of an ALL-VALUES or ALL-VALUES-PROB macro invocation
+  4. the body of an N-VALUES or N-VALUES-PROB macro invocation
+  5. the first argument of a ONE-VALUE macro invocation
+  6. the body of a PRINT-VALUES macro invocation
+  7. the second argument of an ITH-VALUE macro invocation
+  8. the body of a POSSIBLY? macro invocation
+  9. the body of a NECESSARILY? macro invocation.
+ 10. the body of a UNIQUELY? macro invocation.
 
 Note that the default forms of &OPTIONAL and &KEY arguments and the
 initialization forms of &AUX variables are always deterministic
@@ -3402,6 +3404,27 @@ expression is always deterministic."
            (when value (setf result value) (fail))
            value)
          result)))
+
+(defmacro-compile-time uniquely? (&body body)
+  "Evaluates BODY as an implicit PROGN in nondeterministic context,
+returning true if the body has exactly one possible value.
+
+The body is repeatedly backtracked as long as it has only returned up to one
+value or until it fails and returns no values, whichever comes first.
+
+Returns the unique value yielded by the body if such a value exists, otherwise
+returns NIL.
+
+Local side effects performed by the body are undone when UNIQUELY? returns.
+
+A UNIQUELY? expression can appear in both deterministic and
+nondeterministic contexts. Irrespective of what context the UNIQUELY?
+appears in, its body is always in a nondeterministic context. A UNIQUELY?
+expression is always deterministic."
+  (with-gensyms (result)
+    `(let ((,result (n-values (2) ,@body)))
+       (when (= 1 (length ,result))
+         (car ,result)))))
 
 ;;; Memoization
 (defvar-compile-time *pure-cache* nil
