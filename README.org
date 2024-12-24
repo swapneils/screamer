@@ -50,3 +50,9 @@ See CHANGELOG.org
 * Examples
 See http://nikodemus.github.io/screamer/ for some examples of the core Screamer
 functionality.
+* Related projects
+** Screamer+
+This project attempts to enhance the expressiveness of Screamer
+Repos:
+- https://github.com/danlentz/screamer-plus
+- https://github.com/yakovzaytsev/screamer-plus (may be slightly less cleaned-up)
