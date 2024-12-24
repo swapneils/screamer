@@ -37,6 +37,14 @@ pervasive.
 Screamer was originally written by Jeffrey Mark Siskind and David Allen McAllester,
 see file LICENSE for licensing information (1-clause MIT License).
 
+* Changes
+See CHANGELOG.org
+** Incompatible changes from Screamer 4 to Screamer 5
+- The arglist of ~ith-value~ has changed, moving the ~i~ and ~default~ inputs
+  to the first input of the form and making the remainder of the form a list.
+  - Current arglist: ~((i &key (default '(fail))) &body body)~
+  - See the docstring for more details on this form's behavior.
+- Multiple new symbols exported from the ~screamer~ package
 * Examples
 See http://nikodemus.github.io/screamer/ for some examples of the core Screamer
 functionality.

@@ -3324,12 +3324,7 @@ nondeterministically return multiple times.
 If I is nondeterministic then the ITH-VALUE expression operates
 nondeterministically on each value of I. In this case, backtracking for each
 value of BODY and DEFAULT is nested in, and restarted for, each backtrack of
-I.
-
-Note that ITH-VALUE does not collect the results it encounters, and so cannot
-provide that information to other screamer functions that interact with prior
-results. For this functionality, use `N-VALUES' and get the last element of
-the output."
+I."
   `(car
     (last
      (n-values ((1+ ,i) :default (list ,default))

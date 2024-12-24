@@ -1,5 +1,49 @@
 #+title: Changelog
 
+* 5.1.3 (screamer/core v5.1.1, highlights from screamer/experimental)
+Names of sub-systems have been modified to use the ~/<subsection>~
+format, per Common Lisp convention.
+** screamer/core
+- (Untested) Experimental support for ~macrolet~ and ~symbol-macrolet~ forms!
+  - This has been tracked as an action item since Screamer 3,
+  - Note that (within ~local~ declarations) basic ~trivia~ and ~iterate~ forms
+    have been confirmed to work correctly in nondeterministic contexts after
+    this change.
+  - LOOP may still not work correctly depending on your implementation, however;
+    on SBCL at least this appears to be a separate issue from macrolets.
+- Changes to how Screamer works internally to support other extensions
+  - ~*nondeterministic-context*~ is now a hash-table when non-NIL, and contains
+    some information about the current nondeterministic context. This information
+    should not be modified outside of Screamer, but can be read by both users
+    and Screamer-internal functionality.
+  - Screamer now uses the ~screamer::escape~ and ~screamer::%escape~ symbols
+    for internal control flow.
+- Changes to some examples in ~doc~
+- Fixes for some previously-undiscovered issues in screamer-core leading
+  to mutation-mangling of values, potentially including the result lists
+  of accumulation forms.
+- ~solution~ now forces all variables which are essential to knowing the value
+  of the current one, which should hopefully reduce the cases where
+  - If a variable is known to have finite solutions, we only force dependencies
+    which are also bounded, which should prevent this feature from /adding/ any
+    infinite searches.
+- Some lifted inference functions reorganize their inputs before generating
+  a variable, reducing cases where variables can't be bounded
+- Multiple Screamer forms (including ~solution~) have been extended to support
+  nondeterminism inside vectors/arrays/hash-tables, rather than just within lists.
+- The ~==~ and ~/==~ forms introduced in Screamer 5.0 were moved to screamer/experimental
+  until we can better investigate their impact on backward-compatibility for cases
+  of ~use-package~ with other packages using these common symbols.
+- Refactors, including new type declarations in internal functions/lambdas for performance
+** Some highlights from screamer/experimental
+- Memoization via ~pure-values~/~pure-one-value~. The same memoization cache is used
+  until the program exits nondeterministic context, allowing for significant efficiency
+  improvements, especially with nondeterministic iteration / recursion constructs.
+- Parallelism support based on ~lparallel~
+  - The core parallelism form is ~p-a-member-of~, on top of which other forms like
+    ~p-either~ are built.
+- (Unstable) ~call/cc~ support, exposing Screamer's internal continuation-passing system
+  to be used as continuations are in other languages.
 * 5.1.2 (screamer-prob v0.0.3)
 - Moved ~sample-optimizing~ to screamer-experimental until the semantics of optimizing the
   selected nondeterministic path can be worked out further.
@@ -7,9 +51,10 @@
 - Minor incompatible changes to ~sample~ function signature
 - Added ~sample-once~ as a means of sampling without any impact to backtracking
 * 5.1.0 (screamer-core v5.1.0)
-- Incompatible API change to ~n-values~ and ~ith-value~, enclosing the configuration at the
+- Incompatible API change to ~ith-value~, enclosing the configuration at the
   beginning of the form. This allows you to run multiple forms within the body of these
   constructs, and permits extending the construct with more configurations later on.
+- Adding multiple symbols to the API, most notably ~n-values~
 * 5.0.0
 Extension of the library to support probabilistic programming, as well as
 some more utility functions.
@@ -17,7 +62,7 @@ some more utility functions.
 Fixes for some scenarios that previously led to incorrect results or infinite
 searches.
 
-Some new utility functions (e.g. ~with-trail~).
+Some new symbols added to the API (for instance, ~with-trail~).
 
 Significant refactoring and some memory-oriented optimizations.
 * 4.0.0
