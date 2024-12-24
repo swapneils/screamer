@@ -74,7 +74,7 @@
            #:count-trues #:count-truesv
            #:+v #:-v #:*v #:/v
            #:minv #:maxv
-           #:==v #:/==v #:== #:/==
+           #:==v #:/==v
            #:all-different #:all-differentv
            #:funcallv
            #:applyv

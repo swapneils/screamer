@@ -416,6 +416,7 @@ and are incompatible with the standard `funcall'."
           bounded?
           grounded?
           mapcar-nondeterministic
+          == /==
           pure-values
           pure-one-value
           an-element-of
