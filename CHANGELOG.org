@@ -11,6 +11,10 @@ format, per Common Lisp convention.
     this change.
   - LOOP may still not work correctly depending on your implementation, however;
     on SBCL at least this appears to be a separate issue from macrolets.
+- (Untested) Portable support for deterministic usage of ~handler-bind~,
+  ~handler-case~, ~restart-case~, and ~ignore-errors~ within Screamer forms.
+  - The creation of choice-points or calling of nondeterministic functions
+    within these forms is still not supported!
 - Changes to how Screamer works internally to support other extensions
   - ~*nondeterministic-context*~ is now a hash-table when non-NIL, and contains
     some information about the current nondeterministic context. This information

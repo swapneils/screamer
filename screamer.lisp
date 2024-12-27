@@ -1151,6 +1151,110 @@ contexts even though they may appear inside a SCREAMER::DEFUN.")
                                 (rest (rest form))))))
       (funcall map-function form 'unwind-protect)))
 
+(defun-compile-time walk-handler-bind
+    (map-function reduce-function screamer? partial? nested? form environment
+                  &aux (form-type 'handler-bind))
+  (unless (null (rest (last form))) (error "Improper ~S: ~S" form-type form))
+  (unless (>= (length form) 2)
+    (error "~S must have BINDINGS: ~S" form-type form))
+  (unless (and (listp (second form))
+               (null (rest (last (second form))))
+               (every #'(lambda (binding)
+                          (and (consp binding)
+                                   (null (rest (last binding)))
+                                   (or (= (length binding) 1)
+                                       (= (length binding) 2))
+                                   (symbolp (first binding))))
+                      (second form)))
+    (error "Invalid BINDINGS for ~S: ~S" form-type form))
+  (if reduce-function
+      (funcall
+       reduce-function
+       (funcall map-function form form-type)
+       (funcall reduce-function
+                (reduce reduce-function
+                        (mapcar #'(lambda (binding)
+                                    (walk map-function
+                                          reduce-function
+                                          screamer?
+                                          partial?
+                                          nested?
+                                          (second binding)
+                                          environment))
+                                (second form)))
+                (reduce reduce-function
+                        (mapcar #'(lambda (subform)
+                                    (walk map-function
+                                          reduce-function
+                                          screamer?
+                                          partial?
+                                          nested?
+                                          subform
+                                          environment))
+                                (rest (rest form))))))
+      (funcall map-function form form-type)))
+
+(defun-compile-time walk-handler/restart-case
+    (map-function reduce-function screamer? partial? nested? form environment
+                  form-type)
+  (unless (null (rest (last form))) (error "Improper ~S: ~S" form-type form))
+  (let ((bindings (rest (rest form))))
+    (unless (and (listp bindings)
+                 (null (rest (last bindings)))
+                 (every #'(lambda (binding)
+                            (and (consp binding)
+                                 (null (rest (last binding)))
+                                 ;; type
+                                 (symbolp (first binding))
+                                 ;; handler arglist
+                                 (listp (second binding))))
+                        bindings))
+      (error "Invalid BINDINGS for ~S: ~S" form-type form)))
+  (if reduce-function
+      (funcall
+       reduce-function
+       (funcall map-function form 'unwind-protect)
+       (funcall reduce-function
+                (walk map-function
+                      reduce-function
+                      screamer?
+                      partial?
+                      nested?
+                      (second form)
+                      environment)
+                (reduce reduce-function
+                        (mapcar #'(lambda (binding)
+                                    (walk map-function
+                                          reduce-function
+                                          screamer?
+                                          partial?
+                                          nested?
+                                          `(lambda (second binding)
+                                             ,@(rest (rest binding)))
+                                          environment))
+                                (rest (rest form))))))
+      (funcall map-function form 'unwind-protect)))
+
+(defun-compile-time walk-ignore-errors
+    (map-function reduce-function screamer? partial? nested? form environment
+                  &aux (form-type 'ignore-errors))
+  (unless (null (rest (last form))) (error "Improper ~S: ~S" form form-type))
+  (if reduce-function
+      (funcall reduce-function
+               (funcall map-function form 'ignore-errors)
+               (reduce reduce-function
+                       (mapcar #'(lambda (subform)
+                                   (walk map-function
+                                         reduce-function
+                                         screamer?
+                                         partial?
+                                         nested?
+                                         subform
+                                         environment))
+                               (rest form))))
+      (funcall map-function form 'ignore-errors)))
+
+
 (defun-compile-time walk-for-effects
     (map-function reduce-function screamer? partial? nested? form environment)
   (unless (null (rest (last form))) (error "Improper FOR-EFFECTS: ~S" form))
@@ -1548,6 +1652,20 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
         map-function reduce-function screamer? partial? nested? form environment))
       ((eq (first form) 'unwind-protect)
        (walk-unwind-protect
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'handler-bind)
+       (walk-handler-bind
+        map-function reduce-function screamer? partial? nested? form environment))
+      ((eq (first form) 'handler-case)
+       (walk-handler/restart-case
+        map-function reduce-function screamer? partial? nested? form environment
+        'handler-case))
+      ((eq (first form) 'restart-case)
+       (walk-handler/restart-case
+        map-function reduce-function screamer? partial? nested? form environment
+        'restart-case))
+      ((eq (first form) 'ignore-errors)
+       (walk-ignore-errors
         map-function reduce-function screamer? partial? nested? form environment))
       ((and screamer? (eq (first form) 'for-effects))
        (walk-for-effects
