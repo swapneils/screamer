@@ -4030,42 +4030,16 @@ function."
                continuation argument arguments)
         (funcall continuation (apply #'apply function argument arguments)))))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declare-nondeterministic 'mapcar-nondeterministic))
-
-(cl:defun mapcar-nondeterministic (function &rest arguments)
-  "Analogous to the CL:mapcar, except FUNCTION can be either a nondeterministic
-function, or an ordinary deterministic function.
-
-You must use mapcar-NONDETERMINISTIC to mapcar a nondeterministic function. An
-error is signalled if a nondeterministic function object is used with
-CL:mapcar.
-
-You can use mapcar-NONDETERMINISTIC to mapcar either a deterministic or
-nondeterministic function, though even if all of the ARGUMENTS are
-deterministic and FUNCTION is a deterministic function object, the call
-expression will still be nondeterministic \(with presumably a single value),
-since it is impossible to determine at compile time that a given call to
-APPLY-NONDETERMINISTIC will be passed only deterministic function objects for
-function."
-  (declare (ignore function arguments))
-  (screamer-error
-   "mapcar-NONDETERMINISTIC is a nondeterministic function. As such, it must~%~
-   be called only from a nondeterministic context."))
-
-(cl:defun mapcar-nondeterministic-nondeterministic
-    (continuation function argument &rest arguments)
-  (let ((function (value-of function)))
-    (if (nondeterministic-function? function)
-        (funcall continuation
-                 (apply #'mapcar
-                        (lambda (&rest args)
-                          (apply (nondeterministic-function-function function)
-                                 ;; return result
-                                 (lambda (r) r)
-                                 args))
-                        argument arguments))
-        (funcall continuation (apply #'mapcar function argument arguments)))))
+(defun mapcar-nondeterministic (function &rest args)
+  ;; Stop collecting values if an argument list is empty
+  (unless (some #'null args)
+    (cons
+     ;; Call `function' on the current set of arguments
+     (apply-nondeterministic function (mapcar #'car args))
+          ;; Recurse on the remaining arguments
+          (apply-nondeterministic #'mapcar-nondeterministic
+                                  function
+                                  (mapcar #'cdr args)))))
 
 (cl:defun multiple-value-call-nondeterministic (function-form &rest values-forms)
   "Analogous to the CL:MULTIPLE-VALUE-CALL, except FUNCTION-FORM can evaluate
