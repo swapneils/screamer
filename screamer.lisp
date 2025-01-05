@@ -4030,16 +4030,23 @@ function."
                continuation argument arguments)
         (funcall continuation (apply #'apply function argument arguments)))))
 
-(defun mapcar-nondeterministic (function &rest args)
+(defun mapcar-nondeterministic-internal (function args)
   ;; Stop collecting values if an argument list is empty
   (unless (some #'null args)
     (cons
      ;; Call `function' on the current set of arguments
      (apply-nondeterministic function (mapcar #'car args))
-          ;; Recurse on the remaining arguments
-          (apply-nondeterministic #'mapcar-nondeterministic
-                                  function
-                                  (mapcar #'cdr args)))))
+     ;; Recurse on the remaining arguments
+     (mapcar-nondeterministic-internal function (mapcar #'cdr args)))))
+
+(defun mapcar-nondeterministic (function arg &rest args)
+  (cond
+    ;; Use `mapcar' in deterministic cases for efficiency
+    ;; and reduced stack-utilization
+    ((not (nondeterministic-function? function)) (apply #'mapcar function arg args))
+    ;; Recurse over the elements to nondeterministically
+    ;; generate a result
+    (t (mapcar-nondeterministic-internal function (cons arg args)))))
 
 (cl:defun multiple-value-call-nondeterministic (function-form &rest values-forms)
   "Analogous to the CL:MULTIPLE-VALUE-CALL, except FUNCTION-FORM can evaluate
