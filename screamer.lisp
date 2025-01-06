@@ -196,33 +196,33 @@ This value must be a floating point number between 0 and 1.")
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (type (float 0 1) *numeric-bounds-collapse-threshold*)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline roughly-=)))
 (defun-compile-time roughly-= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
   (declare (number a b)
-           (optimize (speed 3) (safety 1) (debug 0)))
+           (optimize (speed 3) (debug 0)))
   (or (= a b)
       ;; For floats, also allow them to be "close enough"
       (and (floatp a) (floatp b)
            (<= (abs (- a b))
                *numeric-bounds-collapse-threshold*))))
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declaim (inline roughly-=)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline roughly-<=)))
 (defun-compile-time roughly-<= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
   (declare (number a b)
-           (optimize (speed 3) (safety 1) (debug 0)))
+           (optimize (speed 3) (debug 0)))
   (or (<= a b) (roughly-= a b)))
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declaim (inline roughly-<=)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline roughly->=)))
 (defun-compile-time roughly->= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
   (declare (number a b)
-           (optimize (speed 3) (safety 1) (debug 0)))
+           (optimize (speed 3) (debug 0)))
   (or (>= a b) (roughly-= a b)))
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declaim (inline roughly->=)))
 
 (defvar-compile-time *cons-cache* (cons nil nil)
   "A cache of conses, to hopefully reduce memory usage")
@@ -255,7 +255,6 @@ This value must be a floating point number between 0 and 1.")
                  *cons-cache-len*)
            (optimize (speed 3)
                      (space 3)
-                     (safety 0)
                      (debug 0)))
   (when (and (consp c)
              ;; Cache isn't already full to capacity.
@@ -291,7 +290,6 @@ This value must be a floating point number between 0 and 1.")
   (declare (list l)
            (optimize (speed 3)
                      (space 3)
-                     (safety 0)
                      (debug 0)))
   (iter:iter
     (iter:for x initially l then y)
@@ -3769,7 +3767,7 @@ extract information from the collected trails."
 
 
 (defun current-probability (&optional (trail *trail*))
-  (declare (optimize (speed 3) (debug 1) (safety 1)))
+  (declare (optimize (speed 3)))
   (labels ((zero-one (n)
              (typecase n
                ;; N is a number between 0 and 1
