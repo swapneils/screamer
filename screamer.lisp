@@ -9116,11 +9116,12 @@ VALUES can be either a vector or a list designator."
                                      ;; Return dependencies only if they cumulatively
                                      ;; have fewer possibilities than the enumerated
                                      ;; domain of `v'.
-                                     (unless (< (length (variable-enumerated-domain v))
-                                                (reduce #'* v-deps
-                                                        :key (serapeum:op
-                                                               (let ((dom (variable-enumerated-domain _)))
-                                                                 (etypecase dom (list (length dom)) (t 1))))))
+                                     (unless (and (serapeum:sequencep (variable-enumerated-domain v))
+                                                  (< (length (variable-enumerated-domain v))
+                                                     (reduce #'* v-deps
+                                                             :key (serapeum:op
+                                                                    (let ((dom (variable-enumerated-domain _)))
+                                                                      (etypecase dom (list (length dom)) (t 1)))))))
                                        v-deps))
                                    ;; If asked for the complete closure or v is not
                                    ;; known to be bounded, return all dependencies
