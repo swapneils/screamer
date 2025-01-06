@@ -884,7 +884,17 @@
     (assert! (memberv x #(3 4 5)))
     (known? (andv (>=v x 3) (<=v x 5)))))
 
-(defun test71 () ;; Values don't get mangled when iterating and returning lists
+(defun test71 ()
+  (equal
+   (let ((a (list 1 2 3))
+        (b (list 4 5 6))
+        (c (list 7 8 9)))
+    (all-values (mapcar-nondeterministic #'a-member-of (list a b c))))
+   '((1 4 7) (1 4 8) (1 4 9) (1 5 7) (1 5 8) (1 5 9) (1 6 7) (1 6 8) (1 6 9)
+     (2 4 7) (2 4 8) (2 4 9) (2 5 7) (2 5 8) (2 5 9) (2 6 7) (2 6 8) (2 6 9)
+     (3 4 7) (3 4 8) (3 4 9) (3 5 7) (3 5 8) (3 5 9) (3 6 7) (3 6 8) (3 6 9))))
+
+(defun test72 () ;; Values don't get mangled when iterating and returning lists
   (known?
    (equal
     (all-values
@@ -965,6 +975,7 @@
   (unless (test69) (format t "~% Test 69 failed") (setf bug? t))
   (unless (test70) (format t "~% Test 70 failed") (setf bug? t))
   (unless (test71) (format t "~% Test 71 failed") (setf bug? t))
+  (unless (test72) (format t "~% Test 72 failed") (setf bug? t))
   (if bug? (error "Screamer has a bug")))
  t)
 
