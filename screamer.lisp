@@ -117,9 +117,13 @@ Prior description:
 Set to T to enable the dynamic extent optimization, NIL to
 disable it. Default is platform dependent.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (boolean *iscream?*)))
 (defvar-compile-time *iscream?* nil
   "T if Screamer is running under ILisp/GNUEmacs with iscream.el loaded.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (type (or null hash-table) *nondeterministic-context*)))
 (defvar-compile-time *nondeterministic-context* nil
   "Context for nondeterministic execution.
 This must be globally NIL.
@@ -132,21 +136,31 @@ nondeterministic execution.
 Nested nondeterministic forms share the same instance of this
 hash-table.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (boolean *screamer?*)))
 (defvar-compile-time *screamer?* nil
   "This must be NIL except when defining internal Screamer functions.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (boolean *compiling-nondeterministic-context?*)))
 (defvar-compile-time *compiling-nondeterministic-context?* nil
   "This must be globally NIL.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (boolean *local?*)))
 (defvar-compile-time *local?* nil "This must be globally NIL.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (list *block-tags*)))
 (defvar-compile-time *block-tags* '() "This must be globally NIL.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (list *tagbody-tags*)))
 (defvar-compile-time *tagbody-tags* '() "This must be globally NIL.")
 
-(defvar-compile-time *trail* (make-array 4096 :adjustable t :fill-pointer 0) "The trail.")
 (eval-when (:compile-toplevel :load-toplevel :execute)
      (declaim (vector *trail*)))
+(defvar-compile-time *trail* (make-array 4096 :adjustable t :fill-pointer 0) "The trail.")
 
 (defmacro-compile-time with-trail (size-form &rest body)
   "Evaluates the BODY forms with *trail* set to a new array of the specified size. (*trail* is part of Screamer's backtracking mechanism.)
@@ -245,13 +259,24 @@ This value must be a floating point number between 0 and 1.")
     (setf (cadr *cons-cache*) nil)
     (incf *cons-cache-len*)))
 
-(defmacro-compile-time cached-list-internal (v &rest vals)
-  `(cached-cons ,v ,(when vals `(cached-list-internal ,@vals))))
+(defun-compile-time possibly-load-time-value-form (form &optional environment)
+  (if (constantp form environment)
+    `(load-time-value ,form)
+    form))
+
+(defmacro-compile-time cached-list-internal (v &rest vals &environment env)
+  `(cached-cons
+    ,(possibly-load-time-value-form v env)
+    ,(when vals `(cached-list-internal ,@vals))))
 (defmacro-compile-time cached-list (v &rest vals)
   `(the list (cached-list-internal ,v ,@vals)))
 
-(defmacro-compile-time cached-list*-internal (v &optional v2 &rest vals)
-  `(cached-cons ,v ,(if vals `(cached-list* ,v2 ,@vals) v2)))
+(defmacro-compile-time cached-list*-internal (v &optional v2 &rest vals &environment env)
+  `(cached-cons
+    ,(possibly-load-time-value-form v env)
+    ,(if vals
+         `(cached-list* ,v2 ,@vals)
+         (possibly-load-time-value-form v2 env))))
 (defmacro-compile-time cached-list* (v &rest vals)
   `(the list (cached-list*-internal ,v ,@vals)))
 
@@ -3656,32 +3681,33 @@ Like PURE-VALUES, but only caches/outputs one value from the body, similar to ON
 ;;;
 ;;; So, we export TRAIL, and document UNWIND-TRAIL as being deprecated,
 ;;; and plan to delete it before 4.0.
-(defun trail (function)
-  "When called in non-deterministic context, adds FUNCTION to the trail.
+(declaim (inline trail trail-prob))
+(defun trail (obj)
+  "When called in non-deterministic context, adds OBJ to the trail.
 Outside non-deterministic context does nothing.
 
 Functions on the trail are called when unwinding from a nondeterministic
 selection (due to either a normal return, or calling FAIL.)"
   ;; NOTE: Is it really better to use VECTOR-PUSH-EXTEND than CONS for the
   ;;       trail?
-  (declare (optimize (speed 3) (space 3)))
+  (declare (optimize (speed 3) (space 3) (debug 0)))
   (when *nondeterministic-context*
-    (vector-push-extend function *trail* 1024))
-  function)
-(defun trail-prob (function prob)
+    (vector-push-extend obj *trail* 1024))
+  obj)
+(defun trail-prob (obj prob)
   (declare (number prob)
-           (optimize (speed 3) (space 3)))
+           (optimize (speed 3) (space 3) (debug 0)))
   (when *nondeterministic-context*
     (vector-push-extend
-     (cond ((and function prob) (list function prob))
-           (function function)
+     (cond ((and obj prob) (list obj prob))
+           (obj obj)
            (prob prob))
      *trail*
      1024)))
 
+(declaim (inline pop-trail))
 (defun pop-trail (trail)
   (vector-pop trail))
-(declaim (inline pop-trail))
 
 (defun unwind-trail-to (trail-pointer)
   (declare (fixnum trail-pointer))
