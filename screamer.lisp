@@ -72,6 +72,9 @@ to DEFPACKAGE, and automatically injects two additional options:
 (defmacro-compile-time defparameter-compile-time (name &optional initial-value documentation)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (defparameter ,name ,initial-value ,@(when documentation (list documentation)))))
+(defmacro-compile-time defconst-compile-time (name &optional initial-value documentation)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (serapeum:defconst ,name ,initial-value ,@(when documentation (list documentation)))))
 
 (defmacro-compile-time defun-compile-time (function-name lambda-list &body body)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
@@ -223,15 +226,18 @@ This value must be a floating point number between 0 and 1.")
 
 (defvar-compile-time *cons-cache* (cons nil nil)
   "A cache of conses, to hopefully reduce memory usage")
-(defvar-compile-time *cons-cache-len* 0)
-(defvar-compile-time *cons-cache-max-len* 2048)
+(defvar-compile-time *cons-cache-len* 0
+  "DO NOT MODIFY THIS!!!")
+(declaim (type (and fixnum (integer 1)) +cons-cache-max-len+))
+(defconst-compile-time +cons-cache-max-len+ 2048
+  "Note: Must be between 1 and (1- `most-positive-fixnum')")
 
 (defun-compile-time cached-cons (a b)
   (declare
-   (type (integer 0) *cons-cache-len*)
+   (type (and fixnum (integer 0))
+         *cons-cache-len*)
    (optimize (speed 3)
              (space 3)
-             (safety 1)
              (debug 0)))
   (if (cdr *cons-cache*)
       (let ((c (cdr *cons-cache*)))
@@ -245,14 +251,15 @@ This value must be a floating point number between 0 and 1.")
 
 (defun-compile-time release-cons (c)
   (declare (list *cons-cache*)
-           (type (integer 0) *cons-cache-len*)
+           (type (and fixnum (integer 0))
+                 *cons-cache-len*)
            (optimize (speed 3)
                      (space 3)
                      (safety 0)
                      (debug 0)))
   (when (and (consp c)
              ;; Cache isn't already full to capacity.
-             (< *cons-cache-len* *cons-cache-max-len*))
+             (< *cons-cache-len* +cons-cache-max-len+))
     ;; Insert cons as the second element of the cache
     (rotatef (cdr c) (cdr *cons-cache*) c)
     ;; NOTE: Remove contained objects for garbage collection
