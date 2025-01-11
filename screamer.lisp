@@ -232,8 +232,11 @@ This value must be a floating point number between 0 and 1.")
 (defconst-compile-time +cons-cache-max-len+ 2048
   "Note: Must be between 1 and (1- `most-positive-fixnum')")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline cached-cons)))
 (defun-compile-time cached-cons (a b)
   (declare
+   (list *cons-cache*)
    (type (and fixnum (integer 0))
          *cons-cache-len*)
    (optimize (speed 3)
@@ -246,16 +249,15 @@ This value must be a floating point number between 0 and 1.")
         (decf *cons-cache-len*)
         c)
       (cons a b)))
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declaim (inline cached-cons)))
 
 (defun-compile-time release-cons (c)
-  (declare (list *cons-cache*)
-           (type (and fixnum (integer 0))
-                 *cons-cache-len*)
-           (optimize (speed 3)
-                     (space 3)
-                     (debug 0)))
+  (declare
+   (list *cons-cache*)
+   (type (and fixnum (integer 0))
+         *cons-cache-len*)
+   (optimize (speed 3)
+             (space 3)
+             (debug 0)))
   (when (and (consp c)
              ;; Cache isn't already full to capacity.
              (< *cons-cache-len* +cons-cache-max-len+))
@@ -337,16 +339,16 @@ in comparison to `cl:mapcar'"
   (lambda (&rest xs)
     (some (rcurry #'apply xs) fs)))
 
-(defvar-compile-time *function-record-table* (make-hash-table :test #'equal)
-  "The function record table.")
 (eval-when (:compile-toplevel :load-toplevel :execute)
      (declaim (hash-table *function-record-table*)))
+(defvar-compile-time *function-record-table* (make-hash-table :test #'equal)
+  "The function record table.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+     (declaim (list *ordered-lambda-list-keywords*)))
 (defvar-compile-time *ordered-lambda-list-keywords*
     '(&optional &rest &key &allow-other-keys &aux)
   "The allowed lambda list keywords in order.")
-(eval-when (:compile-toplevel :load-toplevel :execute)
-     (declaim (list *ordered-lambda-list-keywords*)))
 
 (defmacro-compile-time choice-point-internal (form)
   `(catch '%fail
@@ -1499,7 +1501,8 @@ Returns 2 values, a modified form to be processed by WALK and
 the updated value of `*screamer-macroexpansions*'.
 
 SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
-  ;; (print (list 'internal form 'valid-macro (and (consp form) (symbolp (first form)) (valid-macro? form))))
+  (declare
+   (optimize (speed 3) (space 3) (debug 0)))
   (let ((*screamer-macroexpansions* *screamer-macroexpansions*))
     (macrolet ((call-expansion (form env)
                  `(destructuring-bind (f e)
@@ -1605,6 +1608,9 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
 
 (defun-compile-time walk
     (map-function reduce-function screamer? partial? nested? form environment)
+  (declare
+   (optimize (speed 3) (space 3))
+   (type (or function null) map-function reduce-function))
   ;; TODO: Add MACROLET walking (via trivial-environments since this can't
   ;; otherwise be done portably, with a fallback to fail on this case?)
   ;; needs work: Cannot walk MACROLET or special forms not in both CLtL1 and
@@ -4021,6 +4027,8 @@ for function."
    "FUNCALL-NONDETERMINISTIC is a nondeterministic function. As such, it~%~
    must be called only from a nondeterministic context."))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline funcall-nondeterministic-nondeterministic)))
 (cl:defun funcall-nondeterministic-nondeterministic
     (continuation function &rest arguments)
   (let ((function (value-of function)))
@@ -4053,6 +4061,8 @@ function."
    "APPLY-NONDETERMINISTIC is a nondeterministic function. As such, it must~%~
    be called only from a nondeterministic context."))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline apply-nondeterministic-nondeterministic)))
 (cl:defun apply-nondeterministic-nondeterministic
     (continuation function argument &rest arguments)
   (let ((function (value-of function)))
@@ -9270,6 +9280,7 @@ product of the domain sizes of its CAR and CDR.
 
 Other types of unbound variables have domain size NIL, whereas non-variables
 have domain size of 1."
+  (declare (optimize (speed 3) (space 3)))
   (let ((x (value-of x)))
     (typecase x
       (cons (infinity-* (domain-size (car x)) (domain-size (cdr x))))
@@ -9306,6 +9317,9 @@ Other types of objects and variables have range size NIL."
       (otherwise nil))))
 
 (defun corrupted? (variable)
+  (declare
+   (optimize (speed 3) (space 3))
+   (variable variable))
   (let* ((lower-bound (variable-lower-bound variable))
          (upper-bound (variable-upper-bound variable)))
     (and lower-bound
