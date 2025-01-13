@@ -9328,7 +9328,8 @@ Other types of objects and variables have range size NIL."
          upper-bound
          (/= lower-bound upper-bound)
          (let ((midpoint (/ (+ lower-bound upper-bound) 2)))
-           (or (= midpoint lower-bound) (= midpoint upper-bound))))))
+           (or (roughly-= midpoint lower-bound)
+               (roughly-= midpoint upper-bound))))))
 
 (defun find-best (cost order list)
   (let ((best nil)
