@@ -5065,13 +5065,18 @@ domain includes structures that themselves contain variables."
                 (grounded? (cdr x))))))
 
 (defun apply-substitution (x)
-  "If X is a CONS, or a variable whose value is a CONS, returns
-a freshly consed copy of the tree with all variables dereferenced.
+  "If X is a SEQUENCE or HASH-TABLE, returns a freshly consed
+copy of the tree with all variables dereferenced.
 Otherwise returns the value of X."
   (let ((x (value-of x)))
     (etypecase x
-      (cons (cached-cons (apply-substitution (car x))
-                         (apply-substitution (cdr x))))
+      (cons (if (null (cdr (last x)))
+                ;; If terminates with nil (ie normal list)
+                ;; use mapcar to not consume stack
+                (mapcar #'apply-substitution x)
+                ;; Otherwise recurse on the car and cdr
+                (cons (apply-substitution (car x))
+                      (apply-substitution (cdr x)))))
       (string x)
       (simple-vector (map 'vector #'apply-substitution x))
       (sequence (let ((copy (copy-seq x)))
