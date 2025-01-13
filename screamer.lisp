@@ -440,7 +440,10 @@ contexts even though they may appear inside a SCREAMER::DEFUN.")
           (pop body))
     (values body (reverse declarations) documentation-string)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline self-evaluating?)))
 (defun-compile-time self-evaluating? (thing)
+  (declare (optimize (speed 3) (space 3)))
   (and (not (consp thing))
        (or (not (symbolp thing))
            (null thing)
@@ -448,17 +451,22 @@ contexts even though they may appear inside a SCREAMER::DEFUN.")
            (eq (symbol-package thing) (symbol-package :x)))))
 
 (defun-compile-time valid-macro? (thing &optional env)
+  (declare (optimize (speed 3) (space 3) (debug 0)))
   (and (consp thing)
        (symbolp (first thing))
        (macro-function (first thing) env)
-       ;; Doesn't expand to itself
-       (not (equal (macroexpand thing env)
-                   thing))))
+       ;; NOTE: Relying on user and implementation
+       ;; to detect this failure-case
+       ;; ;; Doesn't expand to itself
+       ;; (not (equal (macroexpand thing env) thing))
+       ))
 (defun-compile-time external-macro? (thing &optional env)
   (and (valid-macro? thing env)
        (not (member (symbol-package (first thing))
                     '(:screamer)))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline quotify)))
 (defun-compile-time quotify (thing)
   (if (self-evaluating? thing) thing `',thing))
 
@@ -1522,47 +1530,79 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
            `(let nil ,@body))
           ;; If a macrolet, expand and save the defs and expand the body.
           ((list* 'macrolet defs body)
+           ;; Iterate through the defs and collect their lexical definitions
+           (iter:iter
+             ;; Removing duplicate definitions the same way SBCL resolves them,
+             ;; to avoid infinite loops
+             (iter:for (name args . def-body) in (remove-duplicates defs :key #'first :from-end t))
+             (let* (
+                    ;; Walk def. This automatically expands it as well,
+                    ;; using the current lexical environment to do so.
+                    (new-def-let-wrapper
+                      (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
+                            t nil nil
+                            `(let () ,@def-body) environment))
+                    (new-def-body (nthcdr 2 new-def-let-wrapper))
+                    ;; Create macro function for def
+                    ;; FIXME: Uses EVAL!!!
+                    (replacer (print (eval `(lambda ,args ,@new-def-body)))))
+               ;; Push macro function to tracked lexical environment
+               (push `(,name . ,replacer) *screamer-macroexpansions*)))
+           ;; NOTE: Old version
            ;; Push the lexical macro definitions onto `*screamer-macroexpansions*'
-           (setf *screamer-macroexpansions*
-                 (append
-                  ;; Iterate through the defs and collect their lexical definitions
-                  (iter:iter
-                    (iter:for (name args . def-body) in defs)
-                    (let* (
-                           ;; Walk def. This automatically expands it as well,
-                           ;; using the current lexical environment to do so.
-                           (new-def-let-wrapper
-                             (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
-                                   t nil nil
-                                   `(let () ,@def-body) environment))
-                           (new-def-body (nthcdr 2 new-def-let-wrapper))
-                           ;; Create macro function for def
-                           ;; FIXME: Uses EVAL!!!
-                           (replacer (eval `(lambda ,args ,@new-def-body))))
-                      ;; Collect macro function to add to tracked lexical environment
-                      (iter:collect `(,name . ,replacer))))
-                  *screamer-macroexpansions*))
+           ;; (setf *screamer-macroexpansions*
+           ;;       (append
+           ;;        ;; Iterate through the defs and collect their lexical definitions
+           ;;        (iter:iter
+           ;;          (iter:for (name args . def-body) in defs)
+           ;;          (let* (
+           ;;                 ;; Walk def. This automatically expands it as well,
+           ;;                 ;; using the current lexical environment to do so.
+           ;;                 (new-def-let-wrapper
+           ;;                   (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
+           ;;                         t nil nil
+           ;;                         `(let () ,@def-body) environment))
+           ;;                 (new-def-body (nthcdr 2 new-def-let-wrapper))
+           ;;                 ;; Create macro function for def
+           ;;                 ;; FIXME: Uses EVAL!!!
+           ;;                 (replacer (eval `(lambda ,args ,@new-def-body))))
+           ;;            ;; Collect macro function to add to tracked lexical environment
+           ;;            (iter:collect `(,name . ,replacer))))
+           ;;        *screamer-macroexpansions*))
            ;; Expand the body with the new lexical macroexpansions
            `(let nil ,@(mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) body)))
           ;; If a symbol-macrolet, expand and save the defs and expand the body.
           ((list* 'symbol-macrolet defs body)
+           ;; Iterate through the defs and collect their lexical definitions
+           (iter:iter
+             ;; Removing duplicate definitions the same way SBCL resolves them,
+             ;; to avoid infinite loops
+             (iter:for (name . def-body) in (remove-duplicates defs :key #'first :from-end t))
+             (let* (
+                    ;; FIXME: Uses EVAL!!!
+                    ;; Create macro function for def
+                    (replacer (eval `(lambda () ',@def-body))))
+               ;; (print (list 'symbol-macro-body `(',@def-body)))
+               ;; Push labelled symbol macro function to the tracked lexical environment
+               (push `((symbol ,name) . ,replacer) *screamer-macroexpansions*)))
+           ;; NOTE: Old version
            ;; Push the lexical symbol-macro definitions onto `*screamer-macroexpansions*'
-           (setf *screamer-macroexpansions*
-                 (append
-                  ;; Iterate through the defs and collect their lexical definitions
-                  (iter:iter
-                    (iter:for (name . def-body) in defs)
-                    (let* (
-                           ;; Expand def based on parent env
-                           ;; (new-def-body (mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) def-body))
-                           ;; FIXME: Currently does nothing!!!
-                           ;; (new-def-body def-body)
-                           ;; Create macro function for def
-                           (replacer (eval `(lambda () ',@def-body))))
-                      ;; (print (list 'symbol-macro-body `(',@def-body)))
-                      ;; Collect labelled symbol macro function to add to tracked lexical environment
-                      (iter:collect `((symbol ,name) . ,replacer))))
-                  *screamer-macroexpansions*))
+           ;; (setf *screamer-macroexpansions*
+           ;;       (append
+           ;;        ;; Iterate through the defs and collect their lexical definitions
+           ;;        (iter:iter
+           ;;          (iter:for (name . def-body) in defs)
+           ;;          (let* (
+           ;;                 ;; Expand def based on parent env
+           ;;                 ;; (new-def-body (mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) def-body))
+           ;;                 ;; FIXME: Currently does nothing!!!
+           ;;                 ;; (new-def-body def-body)
+           ;;                 ;; Create macro function for def
+           ;;                 (replacer (eval `(lambda () ',@def-body))))
+           ;;            ;; (print (list 'symbol-macro-body `(',@def-body)))
+           ;;            ;; Collect labelled symbol macro function to add to tracked lexical environment
+           ;;            (iter:collect `((symbol ,name) . ,replacer))))
+           ;;        *screamer-macroexpansions*))
            ;; Expand the body with the new lexical macroexpansions
            `(let nil ,@(mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) body)))
           ;; If an ordinary macro, expand it step by step
@@ -1600,9 +1640,7 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
         ;; recursively when lacking a `reduce-function', rather than calling itself,
         ;; so the below doesn't create multiple nested recursive processes or similar.
         ;; (and (print "surrendering") (walk walk-map-function nil t nil nil form environment))
-        (and
-         ;; (print (list "surrendering" form *screamer-macroexpansions*))
-         form))
+        form)
        *screamer-macroexpansions*))))
 
 (defun-compile-time walk
@@ -4837,7 +4875,7 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
       (return t))))
 
 
-(defun integers-between (low high)
+(cl:defun integers-between (low high)
   (cond ((and (typep low 'fixnum) (typep high 'fixnum))
          ;; KLUDGE: Don't change this to a LOOP, since in some implementations
          ;; (eg. Lispworks) non-trivial LOOP generates MACROLETs that can't be
@@ -4854,21 +4892,21 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
              ((> i high) (nreverse result))
            (cached-push i result)))))
 
-(defun booleanp (x)
+(cl:defun booleanp (x)
   "Returns true iff X is T or NIL."
   (typep x 'boolean))
 
-(defun infinity-min (x y) (and x y (min x y)))
+(cl:defun infinity-min (x y) (and x y (min x y)))
 
-(defun infinity-max (x y) (and x y (max x y)))
+(cl:defun infinity-max (x y) (and x y (max x y)))
 
-(defun infinity-+ (x y) (and x y (+ x y)))
+(cl:defun infinity-+ (x y) (and x y (+ x y)))
 
-(defun infinity-- (x y) (and x y (- x y)))
+(cl:defun infinity-- (x y) (and x y (- x y)))
 
-(defun infinity-* (x y) (and x y (* x y)))
+(cl:defun infinity-* (x y) (and x y (* x y)))
 
-(defun contains-variables? (x)
+(cl:defun contains-variables? (x)
   (declare (optimize (speed 3) (space 3)))
   (typecase x
     (cons (or (contains-variables? (car x)) (contains-variables? (cdr x))))
@@ -4876,7 +4914,7 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
     (variable t)
     (otherwise nil)))
 
-(defun eliminate-variables (x)
+(cl:defun eliminate-variables (x)
   (declare (optimize (speed 3) (space 3)))
   (if (contains-variables? x)
       (typecase x
@@ -4940,79 +4978,102 @@ be any Lisp object."
     (setf (variable-value variable) variable)
     variable))
 
-(defun variable-integer? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-integer?)))
+(cl:defun variable-integer? (x)
   (and (not (variable-possibly-boolean? x))
        (not (variable-possibly-nonboolean-nonnumber? x))
        (not (variable-possibly-nonreal-number? x))
        (not (variable-possibly-noninteger-real? x))
        (variable-possibly-integer? x)))
 
-(defun variable-noninteger? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-noninteger?)))
+(cl:defun variable-noninteger? (x)
   (and (or (variable-possibly-boolean? x)
            (variable-possibly-nonboolean-nonnumber? x)
            (variable-possibly-nonreal-number? x)
            (variable-possibly-noninteger-real? x))
        (not (variable-possibly-integer? x))))
 
-(defun variable-real? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-real?)))
+(cl:defun variable-real? (x)
   (and (not (variable-possibly-boolean? x))
        (not (variable-possibly-nonboolean-nonnumber? x))
        (not (variable-possibly-nonreal-number? x))
        (or (variable-possibly-noninteger-real? x)
            (variable-possibly-integer? x))))
 
-(defun variable-nonreal? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-nonreal?)))
+(cl:defun variable-nonreal? (x)
   (and (or (variable-possibly-boolean? x)
            (variable-possibly-nonboolean-nonnumber? x)
            (variable-possibly-nonreal-number? x))
        (not (variable-possibly-noninteger-real? x))
        (not (variable-possibly-integer? x))))
 
-(defun variable-number? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-number?)))
+(cl:defun variable-number? (x)
   (and (not (variable-possibly-boolean? x))
        (not (variable-possibly-nonboolean-nonnumber? x))
        (or (variable-possibly-nonreal-number? x)
            (variable-possibly-noninteger-real? x)
            (variable-possibly-integer? x))))
 
-(defun variable-nonnumber? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-nonnumber?)))
+(cl:defun variable-nonnumber? (x)
   (and (or (variable-possibly-boolean? x)
            (variable-possibly-nonboolean-nonnumber? x))
        (not (variable-possibly-nonreal-number? x))
        (not (variable-possibly-noninteger-real? x))
        (not (variable-possibly-integer? x))))
 
-(defun variable-boolean? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-boolean?)))
+(cl:defun variable-boolean? (x)
   (and (variable-possibly-boolean? x)
        (not (variable-possibly-nonboolean-nonnumber? x))
        (not (variable-possibly-nonreal-number? x))
        (not (variable-possibly-noninteger-real? x))
        (not (variable-possibly-integer? x))))
 
-(defun variable-nonboolean? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-nonboolean?)))
+(cl:defun variable-nonboolean? (x)
   (and (not (variable-possibly-boolean? x))
        (or (variable-possibly-nonboolean-nonnumber? x)
            (variable-possibly-nonreal-number? x)
            (variable-possibly-noninteger-real? x)
            (variable-possibly-integer? x))))
 
-(defun variable-true? (x) (eq (variable-value x) t))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-true?)))
+(cl:defun variable-true? (x) (eq (variable-value x) t))
 
-(defun variable-false? (x) (null (variable-value x)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-false?)))
+(cl:defun variable-false? (x) (null (variable-value x)))
 
-(defun value-of (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline value-of)))
+(cl:defun value-of (x)
   "Returns X if X is not a variable. If X is a variable then VALUE-OF
 dereferences X and returns the dereferenced value. If X is bound then
 the value returned will not be a variable. If X is unbound then the
 value returned will be a variable which may be X itself or another
 variable which is shared with X."
+  (declare (optimize (speed 3) (space 3) (debug 0)))
   (tagbody
    loop
-     (if (or (not (variable? x))
-             #+screamer-clos (not (slot-boundp x 'value))
-             (eq (variable-value x) x))
-         (return-from value-of x))
-     (setf x (variable-value x))
+     (when (or (not (variable? x))
+               #+screamer-clos (not (slot-boundp x 'value))
+               (eq x (setf x (variable-value x))))
+       (return-from value-of x))
+     ;; (setf x (variable-value x))
      (go loop)))
 
 (defun variablize (x)
@@ -5026,13 +5087,15 @@ variable which is shared with X."
          (go loop))
       (let ((y (make-variable))) (restrict-value! y x) y)))
 
-(defun bound? (x)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline bound?)))
+(cl:defun bound? (x)
   "Returns T if X is not a variable or if X is a bound variable. Otherwise
 returns NIL. BOUND? is analogous to the extra-logical predicates `var' and
 `nonvar' typically available in Prolog."
   (not (variable? (value-of x))))
 
-(defun bounded? (x)
+(cl:defun bounded? (x)
   "Returns true if there are finite possible values for X."
   (or (bound? x)
       (or (variable-boolean? x)
@@ -5042,7 +5105,7 @@ returns NIL. BOUND? is analogous to the extra-logical predicates `var' and
            (variable-lower-bound x)
            (variable-upper-bound x)))))
 
-(defun ground? (x)
+(cl:defun ground? (x)
   "The primitive GROUND? is an extension of the primitive BOUND? which
 can recursively determine whether an entire aggregate object is
 bound. Returns T if X is bound and either the value of X is atomic or
@@ -5055,7 +5118,7 @@ Otherwise returns nil."
              (and (ground? (car x))
                   (ground? (cdr x)))))))
 
-(defun grounded? (x)
+(cl:defun grounded? (x)
   "Similar to GROUND?, but extending BOUNDED? instead of BOUND?
 NOTE: This may not work correctly on variables whose enumerated
 domain includes structures that themselves contain variables."
@@ -5084,19 +5147,18 @@ Otherwise returns the value of X."
                     (setf (elt copy idx)
                           (apply-substitution (elt x idx))))
                   copy))
-      (array (flet ((map-arr (arr f)
-                      (dotimes (idx (array-total-size arr))
-                        (setf (row-major-aref arr idx)
-                              (funcall f (row-major-aref arr idx))))
-                      arr))
-               (map-arr (copy-array x) #'apply-substitution)))
+      (array (let ((arr (copy-array x)))
+               (dotimes (idx (array-total-size arr))
+                 (setf (row-major-aref arr idx)
+                       (apply-substitution (row-major-aref arr idx))))
+               arr))
       (hash-table
        (let ((x (copy-hash-table x)))
          (maphash (lambda (k v) (setf (gethash k x) (apply-substitution v))) x)
          x))
       (t x))))
 
-(defun occurs-in? (x value)
+(cl:defun occurs-in? (x value)
   ;; NOTE: X must be a variable such that (EQ X (VALUE-OF X)).
   ;; NOTE: Will loop if VALUE is circular.
   (cond
