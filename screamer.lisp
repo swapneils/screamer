@@ -7721,7 +7721,9 @@ the remaining argument. Otherwise returns number variable V.
 
 Note: Numeric contagion rules of Common Lisp are not applied if either
 argument equals zero."
-  (let* ((uniques (remove-duplicates xs))
+  (let* ((uniques (sort (remove-duplicates xs)
+                        ;; Put bound values first
+                        (serapeum:op (and (bound? _) (not (bound? _))))))
          (counts (mapcar (rcurry #'count xs) uniques))
          (new-xs nil))
     (declare (dynamic-extent uniques counts))
@@ -7764,7 +7766,7 @@ X1. Otherwise returns number variable V.
     to be a real, V is constrained to be non-real.
 
 Note: Numeric contagion rules of Common Lisp are not applied if X2 equals zero."
-  (if (null xs) (-v2 0 x) (-v-internal x xs)))
+  (if (null xs) (-v2 0 x) (-v-internal x (list (apply #'+v xs)))))
 
 (defun *v-internal (xs)
   (if (null xs) 1 (*v2 (first xs) (*v-internal (rest xs)))))
