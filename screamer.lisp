@@ -4068,6 +4068,9 @@ for function."
   (declaim (inline funcall-nondeterministic-nondeterministic)))
 (cl:defun funcall-nondeterministic-nondeterministic
     (continuation function &rest arguments)
+  (declare (optimize (speed 3) (space 3))
+           (function continuation)
+           (type (or function nondeterministic-function variable null) function))
   (let ((function (value-of function)))
     (if (nondeterministic-function? function)
         (apply (nondeterministic-function-function function)
@@ -4102,6 +4105,9 @@ function."
   (declaim (inline apply-nondeterministic-nondeterministic)))
 (cl:defun apply-nondeterministic-nondeterministic
     (continuation function argument &rest arguments)
+  (declare (optimize (speed 3) (space 3))
+           (function continuation)
+           (type (or function nondeterministic-function variable null) function))
   (let ((function (value-of function)))
     (if (nondeterministic-function? function)
         (apply #'apply (nondeterministic-function-function function)
