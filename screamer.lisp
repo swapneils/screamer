@@ -700,10 +700,11 @@ to prevent infinite loops.")
 (cl:defun apply-rewrite-rules (type-spec)
   (typecase type-spec
     (variable
-     (if (member type-spec *rewrite-stack*)
-         type-spec
-         (let ((*rewrite-stack* (cons type-spec *rewrite-stack*)))
-           (apply-rewrite-rules (variable-type type-spec)))))
+     (cond
+       ((bound? type-spec) `((value ,(value-of type-spec))))
+       ((member type-spec *rewrite-stack*) type-spec)
+       (t (let ((*rewrite-stack* (cons type-spec *rewrite-stack*)))
+            (apply-rewrite-rules (variable-type type-spec))))))
     (cons
      (labels ((modify-if (comp requirements modifier)
                 (typecase comp
