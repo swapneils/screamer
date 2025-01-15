@@ -339,6 +339,34 @@ in comparison to `cl:mapcar'"
   (lambda (&rest xs)
     (some (rcurry #'apply xs) fs)))
 
+(cl:defun substitute-member (obj a b)
+  "If `obj' = `a', returns `b'.
+If `obj' is a list, recursively replaces `a'
+with `b' in it.
+Otherwise returns `obj'."
+  (cond
+    ((eql obj a) b)
+    ((listp obj) (mapcar (rcurry #'substitute-member a b) obj))
+    ;; Otherwise leave `obj' unchanged
+    (t obj)))
+
+(cl:defun has-type-specifiers (type-spec type-specifiers)
+  "Checks if something is both unbound and contains components
+under one of the provided `type-specifiers'.
+
+If `type-spec' is a `cons', it is treated as a `variable-type'. If it
+is a `variable', the `type' slot is extracted and recursed on. Otherwise
+this function returns `nil'.
+
+For valid inputs, returns every type-component which falls under `type-specifiers'."
+  (typecase type-spec
+    (variable (has-type-specifiers (variable-type type-spec) type-specifiers))
+    (cons
+     (iter:iter
+       (iter:for comp in type-spec)
+       (when (and (consp comp) (member (car comp) type-specifiers))
+         (iter:collect comp))))))
+
 (cl:defun variable-enumerated-domain-type (var)
   (declare (optimize (speed 3) (space 3) (debug 0)))
   (when (and (variable? var)
@@ -349,8 +377,357 @@ in comparison to `cl:mapcar'"
     ;; Return an or type containing the different values
     `(or ,@(mapcar (serapeum:op `(value ,_)) (variable-enumerated-domain var)))))
 
+(cl:defun resolve-math-type (type-spec)
+  "Does type resolution/simplification for mathematical types specifically."
+  (or
+   ;; Rewrite rules by input type
+   (typecase type-spec
+     (variable
+      (if (bound? type-spec)
+          ;; Get the value of the variable.
+          (value-of type-spec)
+          ;; Get the normal form of the
+          ;; variable's type.
+          (let ((result (has-type-specifiers (apply-rewrite-rules type-spec) '(+ - * /))))
+            ;; (print (list type-spec result))
+            (if (and result
+                     ;; If the variable is bounded
+                     ;; we may as well just keep it
+                     ;; and then enumerate the possibilities
+                     ;; later on
+                     (not (bounded? type-spec)))
+                ;; Inline the type of the variable,
+                `(and ,@result)
+                ;; Give up and just return the variable
+                type-spec))))
+     (list
+      (let* ((params (value-of (rest type-spec)))
+             ;; Replace `value' forms at the top level
+             ;; with their values for mathematical reasoning
+             (params (mapcar (lambda (comp)
+                               (if (and (listp comp)
+                                        (eql 'value (first comp)))
+                                   (second comp)
+                                   comp))
+                             params)))
+        (trivia:match type-spec
+          ((trivia:guard
+            (list* '+ _)
+            (ground? type-spec))
+           (let* ((params (mapcar #'resolve-math-type params))
+                  (params (value-of params)))
+             (if (every #'numberp params)
+                 ;; Add `params' together
+                 ;; if they can all be resolved
+                 ;; to numbers
+                 (apply #'+ params)
+                 ;; Return the simplified type
+                 (cons '+ params))))
+          ((trivia:guard
+            (list* '- _)
+            (ground? type-spec))
+           (let* ((params (mapcar #'resolve-math-type params))
+                  (params (value-of params)))
+             (if (every #'numberp params)
+                 ;; Subtract `params'
+                 ;; if they can all be
+                 ;; resolved to numbers
+                 (apply #'- params)
+                 ;; Return the simplified type
+                 (cons '- params))))
+          ((trivia:guard
+            (list* '* _)
+            (ground? type-spec))
+           (let* ((params (mapcar #'resolve-math-type params))
+                  (params (value-of params)))
+             (if (every #'numberp params)
+                 ;; Multiply `params'
+                 ;; if they can all be
+                 ;; resolved to numbers
+                 (apply #'* params)
+                 ;; Return the simplified type
+                 (cons '* params))))
+          ((trivia:guard
+            (list* '/ _)
+            (ground? type-spec))
+           (let* ((params (mapcar #'resolve-math-type params))
+                  (params (value-of params)))
+             (if (every #'numberp params)
+                 ;; Divide `params'
+                 ;; if they can all be
+                 ;; resolved to numbers
+                 (apply #'/ params)
+                 ;; Return the simplified type
+                 (cons '/ params))))
+          ;; If multiple bound values mixed
+          ;; with 1 or more unbound values in a
+          ;; commutative and associative math
+          ;; operation, separate the bound and
+          ;; unbound values to resolve the bound
+          ;; ones separately.
+          ((trivia:guard
+            (list* (member '(+ *)) others)
+            (and (some #'bound? others)
+                 (> (count-if (notf #'bound?) others) 1)))
+           (resolve-math-type `(,(first type-spec)
+                                (,(first type-spec)
+                                 ,@(remove-if-not #'bound? others))
+                                (,(first type-spec)
+                                 ,@(remove-if-not (notf #'bound?) others)))))
+          ;; If duplicate values are detected,
+          ;; merge them together into multiplication
+          ;; forms to make calculation easier
+          ((trivia:guard
+            (list* '+ others)
+            (not (equal others (remove-duplicates others))))
+           (let ((uniques (serapeum:dict)))
+             ;; Count occurrences of each unique value
+             (iter:iter
+               (iter:for el in others)
+               (incf (gethash el uniques 0)))
+             `(+
+               ,@(iter:iter
+                   (iter:for k in (hash-table-keys uniques))
+                   (iter:for v = (gethash k uniques))
+                   (iter:collect
+                       (if (= 1 v)
+                           ;; Return just the unique value
+                           k
+                           ;; Multiple value by its count
+                           `(* ,k ,v)))))))
+          ((list* (member '(+ - * /)) _)
+           ;; Simplify the type as much as possible
+           (let* ((simplified (cons (first type-spec)
+                                    (mapcar #'resolve-math-type params))))
+             (if (equal simplified type-spec)
+                 ;; If simplification changed nothing, return
+                 simplified
+                 ;; If we simplified something, check if the
+                 ;; simplified form reveals new mathematical optimizations
+                 (resolve-math-type simplified))))))))
+   ;; Don't do any resolution if
+   ;; none of the above rules match
+   type-spec))
+
+(defparameter *rewrite-rules*
+  `(
+    ;; Resolve mathematical types
+    (,(lambda (type) (has-type-specifiers type '(+ - * /)))
+     ,(lambda (type)
+        ;; Attempt mathematical simplification. Note that
+        ;; non-mathematical components should be ignored
+        (serapeum:~>>
+         type
+         ;; Resolve mathematical type-components
+         (mapcar #'resolve-math-type)
+         ;; Wrap exposed numeric values
+         ;; in `value' forms
+         (mapcar (lambda (comp)
+                   (if (numberp comp)
+                       `(value ,comp)
+                       comp))))))
+    ;; Combine multiple mathematical types into an `and' form
+    (,(lambda (type) (> (length (has-type-specifiers type '(+ - * /))) 1))
+     ,(lambda (type)
+        (let ((check-math-component
+                (compose
+                 ;; Check if the type-spec is mathematical
+                 (rcurry #'has-type-specifiers '(+ - * /))
+                 ;; Make a 1-component type-spec
+                 #'list)))
+          (list*
+           ;; Put math components in an and
+           (cons 'and (remove-if-not check-math-component type))
+           ;; Remove math components from the rest of the type
+           (remove-if check-math-component type)))))
+    ;; Resolve components of boolean types
+    (,(lambda (type) (has-type-specifiers type '(and or not)))
+     ,(lambda (type)
+        (mapcar (lambda (comp)
+                  (if (member (first comp) '(and or not))
+                      ;; Rewrite the parameters of boolean
+                      ;; logic forms
+                      (cons (first comp)
+                            ;; Combine the 1-element type-specs back into a single list
+                            (mappend
+                             (compose
+                              ;; Apply rewrite rules
+                              #'apply-rewrite-rules
+                              ;; Make a 1-elemnt type-spec
+                              #'list)
+                             (rest comp)))
+                      ;; Otherwise return the form unchanged
+                      comp))
+                type))
+     :recursive)
+    ;; Remove 1-arg `and' and `or' forms
+    (,(lambda (type)
+        (some
+         (compose (curry #'= 2) #'length)
+         (has-type-specifiers type '(and or))))
+     ,(lambda (type)
+        (mapcar (lambda (comp)
+                  (if (and (member (first comp) '(and or))
+                           (= 2 (length comp)))
+                      (second comp)
+                      comp))
+                type))
+     :recursive)
+    ;; Collapse nested forms which are equivalent to their
+    ;; non-nested forms
+    (,(lambda (type)
+        (some
+         (lambda (comp)
+           (and (member (first comp) '(and or + *))
+                ;; Some component has the same starting element
+                ;; as the top-level form
+                (serapeum:~>> (rest comp)
+                              (remove-if-not #'consp)
+                              (mapcar #'first)
+                              (some (curry #'equal (first comp))))))
+         type))
+     ,(lambda (type)
+        (iter:iter (iter:for comp in type)
+          (iter:for comp-type = (first comp))
+
+          ;; Ignore forms which don't have this property
+          (unless (member comp-type '(and or + *))
+            (iter:collect comp)
+            (iter:next-iteration))
+
+          (iter:for params = (rest comp))
+          (iter:for dupes = (remove-if-not (lambda (sub-comp)
+                                             (and (listp sub-comp)
+                                                  (equal comp-type (first sub-comp))))
+                                           params))
+          (iter:for dupe-params = (mappend #'rest dupes))
+          (iter:collect
+              (serapeum:~>>
+               ;; Remove duplicating sub-components and
+               ;; merge params of duplicate sub-components
+               ;; into the top level instead
+               (append (set-difference comp dupes) dupe-params)
+               ;; Remove the component type from wherever
+               ;; it ended up
+               (remove comp-type)
+               ;; Add the component type at the start of the form
+               (cons comp-type))))))
+    ;; Remove duplicate elements of `and'/`or' forms
+    (,(lambda (type)
+        (serapeum:~>> (has-type-specifiers type '(and or not))
+                      (some (compose
+                             ;; The value is different from itself without duplicates
+                             (curry #'apply (notf #'equal))
+                             ;; Get both value and value without `equal' duplicates
+                             (serapeum:juxt #'identity (rcurry #'remove-duplicates :test #'equal))))))
+     ,(lambda (type)
+        ;; (print "dup and/or")
+        (mapcar (lambda (comp)
+                  (if (member (first comp) '(and or))
+                      (remove-duplicates comp :test #'equal)
+                      comp))
+                type)))
+    ;; Enumerate possibilities based on dependencies with enumerated domains
+    (,(lambda (type)
+        (let ((vars (remove-duplicates (variables-in type))))
+          (some (andf (notf #'bound?) #'bounded?) vars)))
+     ,(lambda (type)
+        ;; (print "enumerate")
+        (iter:iter
+          (iter:for comp in type)
+          (iter:for vars = (remove-duplicates (variables-in comp)))
+          (iter:for first-enumerated = (find-if (andf (notf #'bound?)
+                                                      #'bounded?
+                                                      ;; Has an actual enumerated domain to check
+                                                      (compose #'serapeum:sequencep
+                                                               #'variable-enumerated-domain))
+                                                vars))
+          ;; Unless enumeration is possible, keep the component as-is and continue
+          (unless (and vars first-enumerated)
+            (iter:collect comp)
+            (iter:next-iteration))
+
+          (iter:for domain = (variable-enumerated-domain first-enumerated))
+          ;; Create an or form over all possible values of the variable
+          (iter:collect (list* 'or (mapcar (lambda (val)
+                                             (substitute-member comp
+                                                                first-enumerated `(value ,val)))
+                                           domain))))))
+
+    ;; Aggregate numerical types
+    ;; from the dependency tree
+    ;; into the current variable
+    ;; (,(lambda (type)
+    ;;     (let* ((math-symbols '(+ - * /))
+    ;;            (math-components (has-type-specifiers type math-symbols)))
+    ;;       (and math-components
+    ;;            ;; Every math type is not ground (i.e. doesn't
+    ;;            ;; specify a concrete value)
+    ;;            (every (compose #'not #'ground? #'rest) math-components))))
+    ;;  ;; Aggregate the nested math types
+    ;;  ,(lambda (type)
+    ;;     (let* ((math-symbols '(+ - * /))
+    ;;            (math-components (has-type-specifiers type math-symbols)))
+    ;;       )
+    ;;     type))
+    )
+  "List of lists of functions, where the first
+function determines whether a rule applies to a
+variable-type form and returns a \"score\" value
+if it does apply (`nil' otherwise) to use for sorting
+applicable rules, and the second returns a modified
+variable-type form. Both functions take a list
+representing the current variable type as input.
+
+If the third element of the list is `:recursive',
+`apply-rewrite-rules' will recursively walk
+the type specification looking for somewhere to apply
+the rule.")
+
+(defvar *rewrite-stack* nil
+  "Tracks the stack of variables whose types are being calculated,
+to prevent infinite loops.")
+
+(cl:defun apply-rewrite-rules (type-spec)
+  (typecase type-spec
+    (variable
+     (if (member type-spec *rewrite-stack*)
+         type-spec
+         (let ((*rewrite-stack* (cons type-spec *rewrite-stack*)))
+           (apply-rewrite-rules (variable-type type-spec)))))
+    (cons
+     (labels ((modify-if (comp requirements modifier)
+                (typecase comp
+                  (atom comp)
+                  (list
+                   ;; Note: requirements functions
+                   ;; are only created to deal with full type specs
+                   (if (funcall requirements (list comp))
+                       (first (funcall modifier (list comp)))
+                       (mapcar (lambda (el) (modify-if el requirements modifier)) comp)))
+                  (otherwise comp))))
+       (iter:iter
+         (iter:for prev-type = type-spec)
+         (iter:iter (iter:for rule in *rewrite-rules*)
+           (iter:for (requirements modifier) = rule)
+           (iter:for recurse? = (third rule))
+           (when (funcall requirements type-spec)
+             (serapeum:callf modifier type-spec))
+           (when recurse?
+             (setf type-spec (mapcar (lambda (comp) (modify-if comp requirements modifier)) type-spec))))
+         ;; If something was changed, keep going
+         (iter:while
+             (or
+              (set-difference type-spec prev-type :test #'equal)
+              (set-difference prev-type type-spec :test #'equal)))
+         ;; If there is a definite value in type-spec, don't keep
+         ;; applying rewrite-rules
+         (iter:until (some (compose (curry #'equal 'value) #'first) type-spec))))
+     type-spec)
+    (otherwise type-spec)))
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
-     (declaim (hash-table *function-record-table*)))
+  (declaim (hash-table *function-record-table*)))
 (defvar-compile-time *function-record-table* (make-hash-table :test #'equal)
   "The function record table.")
 
@@ -6531,6 +6908,7 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (+-rule-down z x y) (+-rule-down z y x)) z
               :dependencies (list x y))
+             (push `(+ ,x ,y) (variable-type z))
              z))))
 
 (defun -v2 (x y)
@@ -6550,6 +6928,7 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (+-rule-up x y z) (+-rule-down x y z)) z
               :dependencies (list x y))
+             (push `(- ,x ,y) (variable-type z))
              z))))
 
 (defun *v2 (x y)
@@ -6572,6 +6951,7 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (*-rule-down z x y) (*-rule-down z y x)) z
               :dependencies (list x y))
+             (push `(* ,x ,y) (variable-type z))
              z))))
 
 (defun /v2 (x y)
@@ -6602,6 +6982,7 @@ Otherwise returns the value of X."
                   (restrict-enumerated-antidomain! y '(0))
                   (*-rule-up x y z) (*-rule-down x y z)) z
               :dependencies (list x y))
+             (push `(/ ,x ,y) (variable-type z))
              z))))
 
 (defun minv2 (x y)
@@ -6619,6 +7000,7 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (min-rule-down z x y) (min-rule-down z y x)) z
               :dependencies (list x y))
+             (push `(min ,x ,y) (variable-type z))
              z))))
 
 (defun maxv2 (x y)
@@ -6636,6 +7018,7 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (max-rule-down z x y) (max-rule-down z y x)) z
               :dependencies (list x y))
+             (push `(max ,x ,y) (variable-type z))
              z))))
 
 ;;; Lifted Type Functions (KNOWN? optimized)
@@ -6885,6 +7268,7 @@ NIL then a noticer attached to V restricts X to be non-integer valued."
                   (cond ((variable-true? z) (restrict-integer! x))
                         ((variable-false? z) (restrict-noninteger! x))))
               z)
+             (push 'boolean (variable-type z))
              z))))
 
 (defun realpv (x)
