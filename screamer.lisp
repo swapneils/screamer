@@ -688,6 +688,15 @@ the rule.")
   "Tracks the stack of variables whose types are being calculated,
 to prevent infinite loops.")
 
+;;; FIXME: Currently this needs to be re-reun
+;;; from the initial type of the variable
+;;; every time we want more info, since:
+;;; A) The type system isn't covering
+;;; all the datacontrolled by Screamer
+;;; B) We inline the types of dependency
+;;; variables, which is an invalid optimization
+;;; in the presence of changes/assertions to those
+;;; variables.
 (cl:defun apply-rewrite-rules (type-spec)
   (typecase type-spec
     (variable
