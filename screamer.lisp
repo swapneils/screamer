@@ -579,20 +579,6 @@ to prevent infinite loops.")
                    (if (numberp comp)
                        `(value ,comp)
                        comp))))))
-    ;; Combine multiple mathematical types into an `and' form
-    (,(lambda (type) (> (length (has-type-specifiers type '(+ - * /))) 1))
-     ,(lambda (type)
-        (let ((check-math-component
-                (compose
-                 ;; Check if the type-spec is mathematical
-                 (rcurry #'has-type-specifiers '(+ - * /))
-                 ;; Make a 1-component type-spec
-                 #'list)))
-          (list*
-           ;; Put math components in an and
-           (cons 'and (remove-if-not check-math-component type))
-           ;; Remove math components from the rest of the type
-           (remove-if check-math-component type)))))
     ;; Collapse nested forms which are equivalent to their
     ;; non-nested forms
     (,(lambda (type)
@@ -632,6 +618,64 @@ to prevent infinite loops.")
                (remove comp-type)
                ;; Add the component type at the start of the form
                (cons comp-type))))))
+    ;; Combine multiple mathematical types into an `and' form
+    ;; NOTE: Need to decide whether this should be part of
+    ;; the normal form
+    ;; (,(lambda (type) (> (length (has-type-specifiers type '(+ - * /))) 1))
+    ;;  ,(lambda (type)
+    ;;     (let ((check-math-component
+    ;;             (compose
+    ;;              ;; Check if the type-spec is mathematical
+    ;;              (rcurry #'has-type-specifiers '(+ - * /))
+    ;;              ;; Make a 1-component type-spec
+    ;;              #'list)))
+    ;;       (list*
+    ;;        ;; Put math components in an and
+    ;;        (cons 'and (remove-if-not check-math-component type))
+    ;;        ;; Remove math components from the rest of the type
+    ;;        (remove-if check-math-component type)))))
+    ;; Inline `and' forms
+    ;; NOTE: Decide if this should stay
+    ;; in the normal form of types!!!
+    ;; TODO: Need to figure out a general
+    ;; way of preventing this from inlining
+    ;; `and' forms below the top-level; either
+    ;; make the top-level another and form and
+    ;; then just use nesting-removal, or use
+    ;; some kind of dynamic variable.
+    ;; Currently I'm just manually skipping
+    ;; over the `and' layer in forms where
+    ;; it shouldn't be inlined
+    (,(lambda (type) (some (lambda-match ((list* 'and _) t)) type))
+     ,(lambda (type)
+        (mappend (lambda-match
+                   ;; Inline argumnets to `and'
+                   ((list* 'and forms) forms)
+                   ;; Do nothing to other values
+                   (val (list val)))
+                 type)))
+    ;; Resolve components of boolean types
+    (,(lambda (type) (has-type-specifiers type '(or not)))
+     ,(lambda (type)
+        ;; (print "bool-comp")
+        (mapcar (lambda (comp)
+                  (if (member (first comp) '(or not))
+                      ;; Rewrite the parameters of boolean
+                      ;; logic forms
+                      (cons (first comp)
+                            ;; Combine the 1-element type-specs back into a single list
+                            (mappend
+                             (lambda-match
+                               ;; For `and' types, manually
+                               ;; skip the top-level form so
+                               ;; we don't end up inlining it
+                               ((list* 'and args) (list `(and ,@(apply-rewrite-rules-internal args))))
+                               (form (apply-rewrite-rules-internal (list form))))
+                             (rest comp)))
+                      ;; Otherwise return the form unchanged
+                      comp))
+                type))
+     :recursive)
     ;; Remove duplicate elements of `and'/`or' forms
     (,(lambda (type)
         (serapeum:~>> (has-type-specifiers type '(and or not))
