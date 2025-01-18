@@ -27,6 +27,8 @@
 (defpackage :screamer
   (:shadow :defun :multiple-value-bind :y-or-n-p :variable)
   (:use :cl :alexandria)
+  (:import-from :trivia #:match #:ematch #:lambda-match #:guard)
+  (:import-from :serapeum #:op #:~> #:~>>)
   (:local-nicknames (:s :serapeum))
   (:export #:either
            #:fail

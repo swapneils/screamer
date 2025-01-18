@@ -36,6 +36,7 @@
   :version "5.1.1"
   :depends-on ("alexandria"
                "serapeum"
+               "trivia"
                "iterate")
   :components
   ((:file "package")
