@@ -554,6 +554,13 @@ to prevent infinite loops.")
                             vars))
                    (form (list form)))
                  type)))
+    ;; Ignore 0-arg `or'
+    (,(lambda (type) (some (lambda-match ((list 'or) t)) type))
+     ,(lambda (type) (remove-if (lambda-match ((list 'or) t)) type)))
+    ;; Fail 0-arg `and'
+    ;; FIXME: Need to figure out if this will alwas be correct behavior
+    ;; (,(lambda (type) (some (lambda-match ((list 'and) t)) type))
+    ;;  ,(lambda (type) (declare (ignore type)) (fail)))
     ;; Resolve mathematical types
     (,(lambda (type) (has-type-specifiers type '(+ - * /)))
      ,(lambda (type)
@@ -583,39 +590,6 @@ to prevent infinite loops.")
            (cons 'and (remove-if-not check-math-component type))
            ;; Remove math components from the rest of the type
            (remove-if check-math-component type)))))
-    ;; Resolve components of boolean types
-    (,(lambda (type) (has-type-specifiers type '(and or not)))
-     ,(lambda (type)
-        (mapcar (lambda (comp)
-                  (if (member (first comp) '(and or not))
-                      ;; Rewrite the parameters of boolean
-                      ;; logic forms
-                      (cons (first comp)
-                            ;; Combine the 1-element type-specs back into a single list
-                            (mappend
-                             (compose
-                              ;; Apply rewrite rules
-                              #'apply-rewrite-rules
-                              ;; Make a 1-elemnt type-spec
-                              #'list)
-                             (rest comp)))
-                      ;; Otherwise return the form unchanged
-                      comp))
-                type))
-     :recursive)
-    ;; Remove 1-arg `and' and `or' forms
-    (,(lambda (type)
-        (some
-         (compose (curry #'= 2) #'length)
-         (has-type-specifiers type '(and or))))
-     ,(lambda (type)
-        (mapcar (lambda (comp)
-                  (if (and (member (first comp) '(and or))
-                           (= 2 (length comp)))
-                      (second comp)
-                      comp))
-                type))
-     :recursive)
     ;; Collapse nested forms which are equivalent to their
     ;; non-nested forms
     (,(lambda (type)
@@ -670,6 +644,60 @@ to prevent infinite loops.")
                       (remove-duplicates comp :test #'equal)
                       comp))
                 type)))
+    ;; Aggregate `or' forms with only `value' sub-forms
+    (,(lambda (type)
+        ;; We have multiple `or' forms containing only `value' components
+        (> (count-if (lambda-match
+                       ((guard
+                         ;; `or' form
+                         (list* 'or args)
+                         ;; Has only value componnets
+                         (every (lambda-match ((list 'value _) t)) args))
+                        t))
+                     type)
+           ;; Multiple forms with this format
+           1))
+     ,(lambda (type)
+        ;; (print "aggregate-or")
+        (let* (
+               ;; Get the componnets  we want to change
+               (targs (remove-if-not
+                       (lambda-match
+                         ((guard
+                           ;; `or' form
+                           (list* 'or args)
+                           ;; Has only value componnets
+                           (every (lambda-match ((list 'value _) t)) args))
+                          t))
+                       type))
+               ;; Combine the tails of each `or' form
+               ;; into the tail of a single `or' form
+               ;; by finding a common intersection.
+               (combined `(or ,@(serapeum:~>>
+                                 targs
+                                 ;; Get argument lists
+                                 (mapcar #'rest)
+                                 ;; Get intersection of argument lists
+                                 (reduce (rcurry #'intersection :test #'equal))))))
+          ;; Replace `targs' with `combined' in the type.
+          (cons combined (set-difference type targs)))))
+    ;; Remove 1-arg `and' and `or' forms
+    (,(lambda (type)
+        (some (lambda-match ((list (or 'and 'or) _) t)) type))
+     ,(lambda (type)
+        ;; (print "1-arg and/or")
+        (mapcar (lambda (comp)
+                  (if (and (member (first comp) '(and or))
+                           (= 2 (length comp)))
+                      (second comp)
+                      comp))
+                type))
+     :recursive)
+    ;; Remove double-`not'
+    (,(lambda (type) (some (lambda-match ((list 'not (list 'not _)) t)) type))
+     ,(lambda (type)
+        (mapcar (lambda-match ((list 'not (list 'not arg)) arg) (form form)) type))
+     :recursive)
     ;; Enumerate possibilities based on dependencies with enumerated domains
     (,(lambda (type)
         (let ((vars (remove-duplicates (variables-in type))))
@@ -700,23 +728,46 @@ to prevent infinite loops.")
                                              (substitute-member comp
                                                                 first-enumerated `(value ,val)))
                                            domain))))))
-
-    ;; Aggregate numerical types
-    ;; from the dependency tree
-    ;; into the current variable
-    ;; (,(lambda (type)
-    ;;     (let* ((math-symbols '(+ - * /))
-    ;;            (math-components (has-type-specifiers type math-symbols)))
-    ;;       (and math-components
-    ;;            ;; Every math type is not ground (i.e. doesn't
-    ;;            ;; specify a concrete value)
-    ;;            (every (compose #'not #'ground? #'rest) math-components))))
-    ;;  ;; Aggregate the nested math types
-    ;;  ,(lambda (type)
-    ;;     (let* ((math-symbols '(+ - * /))
-    ;;            (math-components (has-type-specifiers type math-symbols)))
-    ;;       )
-    ;;     type))
+    ;; Propagate `not' downwards
+    (,(lambda (type)
+        (some (lambda-match ((list 'not (list* (or 'and 'or) _)) t)) type))
+     ,(lambda (type)
+        (iter:iter (iter:for comp in type)
+          (iter:collect
+              (ematch comp
+                ;; The below 2 rules are from
+                ;; boolean algebra
+                ((list 'not (list* 'and args))
+                 `(or ,@(mapcar (serapeum:op `(not ,_)) args)))
+                ((list 'not (list* 'or args))
+                 `(and ,@(mapcar (serapeum:op `(not ,_)) args)))
+                ;; Do nothing otherwise
+                (_ comp))))))
+    ;; Remove components of `or' based on `not'
+    ;; FIXME: Currently
+    (,(lambda (type)
+        (let* ((or-comps (has-type-specifiers type '(or)))
+               (not-comps (has-type-specifiers type '(not)))
+               (or-args (mapcar #'rest or-comps))
+               (invalids (mapcar #'second not-comps)))
+          ;; (print (list 'type type 'comps or-comps not-comps 'elems or-args invalids))
+          ;; Some or statement has invalid components
+          (and (listp or-args)
+               (listp invalids)
+               (some (rcurry #'intersection invalids :test #'equal) or-args))))
+     ,(lambda (type)
+        (let* ((not-comps (has-type-specifiers type '(not)))
+               (invalids (mapcar #'second not-comps)))
+          (mapcar
+           ;; Update or components of type to exclude
+           ;; invalid members
+           (lambda-match
+             ((list* 'or (and args (not nil)))
+              (cons 'or
+                    (remove-if (lambda-match ((guard v (member v invalids :test #'equal)) t)) args)))
+             (other other))
+           type))
+        ))
     )
   "List of lists of functions, where the first
 function determines whether a rule applies to a
