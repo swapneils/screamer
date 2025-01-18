@@ -554,6 +554,9 @@ to prevent infinite loops.")
                             vars))
                    (form (list form)))
                  type)))
+    ;; Remove duplicate type components
+    (,(lambda (type) (not (equal type (remove-duplicates type :test #'equal))))
+     ,(lambda (type) (remove-duplicates type :test #'equal)))
     ;; Ignore 0-arg `or'
     (,(lambda (type) (some (lambda-match ((list 'or) t)) type))
      ,(lambda (type) (remove-if (lambda-match ((list 'or) t)) type)))
