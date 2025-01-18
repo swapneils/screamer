@@ -1528,129 +1528,128 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
                     (setf *screamer-macroexpansions* e)
                     f)))
       (list
-       (or
-        (trivia:match form
-          ;; If an empty declare form, get rid of it
-          ;; TODO: Do we need this?
-          ((list 'declare) nil)
-          ;; If a quoted form or declaration, ignore it
-          ((list* (or 'quote 'declare) _) form)
-          ;; If an empty macrolet or symbol-macrolet, ignore it
-          ((list* (or 'macrolet 'symbol-macrolet) nil body)
-           `(let nil ,@body))
-          ;; If a macrolet, expand and save the defs and expand the body.
-          ((list* 'macrolet defs body)
-           ;; Iterate through the defs and collect their lexical definitions
-           (iter:iter
-             ;; Removing duplicate definitions the same way SBCL resolves them,
-             ;; to avoid infinite loops
-             (iter:for (name args . def-body) in (remove-duplicates defs :key #'first :from-end t))
-             (let* (
-                    ;; Walk def. This automatically expands it as well,
-                    ;; using the current lexical environment to do so.
-                    (new-def-let-wrapper
-                      (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
-                            t nil nil
-                            `(let () ,@def-body) environment))
-                    (new-def-body (nthcdr 2 new-def-let-wrapper))
-                    ;; Create macro function for def
-                    ;; FIXME: Uses EVAL!!!
-                    (replacer (print (eval `(lambda ,args ,@new-def-body)))))
-               ;; Push macro function to tracked lexical environment
-               (push `(,name . ,replacer) *screamer-macroexpansions*)))
-           ;; NOTE: Old version
-           ;; Push the lexical macro definitions onto `*screamer-macroexpansions*'
-           ;; (setf *screamer-macroexpansions*
-           ;;       (append
-           ;;        ;; Iterate through the defs and collect their lexical definitions
-           ;;        (iter:iter
-           ;;          (iter:for (name args . def-body) in defs)
-           ;;          (let* (
-           ;;                 ;; Walk def. This automatically expands it as well,
-           ;;                 ;; using the current lexical environment to do so.
-           ;;                 (new-def-let-wrapper
-           ;;                   (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
-           ;;                         t nil nil
-           ;;                         `(let () ,@def-body) environment))
-           ;;                 (new-def-body (nthcdr 2 new-def-let-wrapper))
-           ;;                 ;; Create macro function for def
-           ;;                 ;; FIXME: Uses EVAL!!!
-           ;;                 (replacer (eval `(lambda ,args ,@new-def-body))))
-           ;;            ;; Collect macro function to add to tracked lexical environment
-           ;;            (iter:collect `(,name . ,replacer))))
-           ;;        *screamer-macroexpansions*))
-           ;; Expand the body with the new lexical macroexpansions
-           `(let nil ,@(mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) body)))
-          ;; If a symbol-macrolet, expand and save the defs and expand the body.
-          ((list* 'symbol-macrolet defs body)
-           ;; Iterate through the defs and collect their lexical definitions
-           (iter:iter
-             ;; Removing duplicate definitions the same way SBCL resolves them,
-             ;; to avoid infinite loops
-             (iter:for (name . def-body) in (remove-duplicates defs :key #'first :from-end t))
-             (let* (
-                    ;; FIXME: Uses EVAL!!!
-                    ;; Create macro function for def
-                    (replacer (eval `(lambda () ',@def-body))))
-               ;; (print (list 'symbol-macro-body `(',@def-body)))
-               ;; Push labelled symbol macro function to the tracked lexical environment
-               (push `((symbol ,name) . ,replacer) *screamer-macroexpansions*)))
-           ;; NOTE: Old version
-           ;; Push the lexical symbol-macro definitions onto `*screamer-macroexpansions*'
-           ;; (setf *screamer-macroexpansions*
-           ;;       (append
-           ;;        ;; Iterate through the defs and collect their lexical definitions
-           ;;        (iter:iter
-           ;;          (iter:for (name . def-body) in defs)
-           ;;          (let* (
-           ;;                 ;; Expand def based on parent env
-           ;;                 ;; (new-def-body (mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) def-body))
-           ;;                 ;; FIXME: Currently does nothing!!!
-           ;;                 ;; (new-def-body def-body)
-           ;;                 ;; Create macro function for def
-           ;;                 (replacer (eval `(lambda () ',@def-body))))
-           ;;            ;; (print (list 'symbol-macro-body `(',@def-body)))
-           ;;            ;; Collect labelled symbol macro function to add to tracked lexical environment
-           ;;            (iter:collect `((symbol ,name) . ,replacer))))
-           ;;        *screamer-macroexpansions*))
-           ;; Expand the body with the new lexical macroexpansions
-           `(let nil ,@(mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) body)))
-          ;; If an ordinary macro, expand it step by step
-          ;; NOTE: Shouldn't be needed since walk calls this at every step, and
-          ;; walk also expands macros when it finds them
-          ;; ((trivia:guard (list* form-name _)
-          ;;                (and
-          ;;                 (print (list 'name form-name))
-          ;;                 (symbolp (first form))
-          ;;                 (valid-macro? form environment)
-          ;;                 (not (equal form (macroexpand-1 form environment)))
-          ;;                 ))
-          ;;  (let ((*macroexpand-hook* #'funcall))
-          ;;    (print (list "expanding-macro" form (macroexpand form environment)))
-          ;;    (call-expansion (macroexpand form environment) environment)))
-          ;; If a known lexical macro, expand it and then look at the result
-          ((trivia:guard (list* form-name form-args)
-                         (assoc form-name *screamer-macroexpansions*))
-           (let* ((match (assoc form-name *screamer-macroexpansions*))
-                  ;; Get the macroexpansion function
-                  (converter (cdr match)))
-             ;; (print '(known-macro))
-             ;; Call the macroexpansion function on the args and look at the result
-             (call-expansion (apply converter form-args) environment)))
-          ;; If a known lexical symbol-macro, expand it and look at the result
-          ((trivia:guard (type symbol)
-                         (assoc `(symbol ,form) *screamer-macroexpansions* :test 'equal))
-           (let* ((match (assoc (list 'symbol form) *screamer-macroexpansions* :test 'equal))
-                  ;; Get the macroexpansion function
-                  (converter (cdr match)))
-             ;; (print `(known-symbol ,form match ,match))
-             (call-expansion (funcall converter) environment))))
-        ;; If the form doesn't match the lexical expansion cases, walk the form.
-        ;; Note that `walk' (seemingly?) relies on the map-function to call it
-        ;; recursively when lacking a `reduce-function', rather than calling itself,
-        ;; so the below doesn't create multiple nested recursive processes or similar.
-        ;; (and (print "surrendering") (walk walk-map-function nil t nil nil form environment))
-        form)
+       (ematch form
+         ;; If an empty declare form, get rid of it
+         ;; TODO: Do we need this?
+         ((list 'declare) nil)
+         ;; If a quoted form or declaration, ignore it
+         ((list* (or 'quote 'declare) _) form)
+         ;; If an empty macrolet or symbol-macrolet, ignore it
+         ((list* (or 'macrolet 'symbol-macrolet) nil body)
+          `(let nil ,@body))
+         ;; If a macrolet, expand and save the defs and expand the body.
+         ((list* 'macrolet defs body)
+          ;; Iterate through the defs and collect their lexical definitions
+          (iter:iter
+            ;; Removing duplicate definitions the same way SBCL resolves them,
+            ;; to avoid infinite loops
+            (iter:for (name args . def-body) in (remove-duplicates defs :key #'first :from-end t))
+            (let* (
+                   ;; Walk def. This automatically expands it as well,
+                   ;; using the current lexical environment to do so.
+                   (new-def-let-wrapper
+                     (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
+                           t nil nil
+                           `(let () ,@def-body) environment))
+                   (new-def-body (nthcdr 2 new-def-let-wrapper))
+                   ;; Create macro function for def
+                   ;; FIXME: Uses EVAL!!!
+                   (replacer (eval `(lambda ,args ,@new-def-body))))
+              ;; Push macro function to tracked lexical environment
+              (push `(,name . ,replacer) *screamer-macroexpansions*)))
+          ;; NOTE: Old version
+          ;; Push the lexical macro definitions onto `*screamer-macroexpansions*'
+          ;; (setf *screamer-macroexpansions*
+          ;;       (append
+          ;;        ;; Iterate through the defs and collect their lexical definitions
+          ;;        (iter:iter
+          ;;          (iter:for (name args . def-body) in defs)
+          ;;          (let* (
+          ;;                 ;; Walk def. This automatically expands it as well,
+          ;;                 ;; using the current lexical environment to do so.
+          ;;                 (new-def-let-wrapper
+          ;;                   (walk (lambda (form form-type) (declare (ignore form-type)) form) nil
+          ;;                         t nil nil
+          ;;                         `(let () ,@def-body) environment))
+          ;;                 (new-def-body (nthcdr 2 new-def-let-wrapper))
+          ;;                 ;; Create macro function for def
+          ;;                 ;; FIXME: Uses EVAL!!!
+          ;;                 (replacer (eval `(lambda ,args ,@new-def-body))))
+          ;;            ;; Collect macro function to add to tracked lexical environment
+          ;;            (iter:collect `(,name . ,replacer))))
+          ;;        *screamer-macroexpansions*))
+          ;; Expand the body with the new lexical macroexpansions
+          `(let nil ,@(mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) body)))
+         ;; If a symbol-macrolet, expand and save the defs and expand the body.
+         ((list* 'symbol-macrolet defs body)
+          ;; Iterate through the defs and collect their lexical definitions
+          (iter:iter
+            ;; Removing duplicate definitions the same way SBCL resolves them,
+            ;; to avoid infinite loops
+            (iter:for (name . def-body) in (remove-duplicates defs :key #'first :from-end t))
+            (let* (
+                   ;; FIXME: Uses EVAL!!!
+                   ;; Create macro function for def
+                   (replacer (eval `(lambda () ',@def-body))))
+              ;; (print (list 'symbol-macro-body `(',@def-body)))
+              ;; Push labelled symbol macro function to the tracked lexical environment
+              (push `((symbol ,name) . ,replacer) *screamer-macroexpansions*)))
+          ;; NOTE: Old version
+          ;; Push the lexical symbol-macro definitions onto `*screamer-macroexpansions*'
+          ;; (setf *screamer-macroexpansions*
+          ;;       (append
+          ;;        ;; Iterate through the defs and collect their lexical definitions
+          ;;        (iter:iter
+          ;;          (iter:for (name . def-body) in defs)
+          ;;          (let* (
+          ;;                 ;; Expand def based on parent env
+          ;;                 ;; (new-def-body (mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) def-body))
+          ;;                 ;; FIXME: Currently does nothing!!!
+          ;;                 ;; (new-def-body def-body)
+          ;;                 ;; Create macro function for def
+          ;;                 (replacer (eval `(lambda () ',@def-body))))
+          ;;            ;; (print (list 'symbol-macro-body `(',@def-body)))
+          ;;            ;; Collect labelled symbol macro function to add to tracked lexical environment
+          ;;            (iter:collect `((symbol ,name) . ,replacer))))
+          ;;        *screamer-macroexpansions*))
+          ;; Expand the body with the new lexical macroexpansions
+          `(let nil ,@(mapcar (compose #'first (rcurry #'expand-lexical-environments environment)) body)))
+         ;; If an ordinary macro, expand it step by step
+         ;; NOTE: Shouldn't be needed since walk calls this at every step, and
+         ;; walk also expands macros when it finds them
+         ;; ((guard (list* form-name _)
+         ;;         (and
+         ;;          (print (list 'name form-name))
+         ;;          (symbolp (first form))
+         ;;          (valid-macro? form environment)
+         ;;          (not (equal form (macroexpand-1 form environment)))
+         ;;          ))
+         ;;  (let ((*macroexpand-hook* #'funcall))
+         ;;    (print (list "expanding-macro" form (macroexpand form environment)))
+         ;;    (call-expansion (macroexpand form environment) environment)))
+         ;; If a known lexical macro, expand it and then look at the result
+         ((guard (list* form-name form-args)
+                 (assoc form-name *screamer-macroexpansions*))
+          (let* ((match (assoc form-name *screamer-macroexpansions*))
+                 ;; Get the macroexpansion function
+                 (converter (cdr match)))
+            ;; (print '(known-macro))
+            ;; Call the macroexpansion function on the args and look at the result
+            (call-expansion (apply converter form-args) environment)))
+         ;; If a known lexical symbol-macro, expand it and look at the result
+         ((guard (type symbol)
+                 (assoc `(symbol ,form) *screamer-macroexpansions* :test 'equal))
+          (let* ((match (assoc (list 'symbol form) *screamer-macroexpansions* :test 'equal))
+                 ;; Get the macroexpansion function
+                 (converter (cdr match)))
+            ;; (print `(known-symbol ,form match ,match))
+            (call-expansion (funcall converter) environment)))
+         ;; If the form doesn't match the lexical expansion cases, walk the form.
+         ;; Note that `walk' (seemingly?) relies on the map-function to call it
+         ;; recursively when lacking a `reduce-function', rather than calling itself,
+         ;; so the below doesn't create multiple nested recursive processes or similar.
+         ;; (and (print "surrendering") (walk walk-map-function nil t nil nil form environment))
+         (_ form))
        *screamer-macroexpansions*))))
 
 (defun-compile-time walk
@@ -5867,78 +5866,103 @@ Otherwise returns the value of X."
   ;; NOTE: X must be a variable such that (EQ X (VALUE-OF X)).
   ;; NOTE: All callers must insure that the new ENUMERATED-DOMAIN is a subset
   ;;       of the old one.
+  ;; NOTE: Returns `nil' if domain isn't updated, `t' if it is
   (if (null enumerated-domain) (fail))
   (local
-    (cond
-      ((eq (variable-enumerated-domain x) t)
-       (setf (variable-enumerated-domain x) enumerated-domain)
-       (unless (null (variable-enumerated-antidomain x))
-         (setf (variable-enumerated-antidomain x) '()))
-       (if (and (variable-possibly-boolean? x)
-                (not (some #'booleanp enumerated-domain)))
-           (setf (variable-possibly-boolean? x) nil))
-       (if (and (variable-possibly-nonboolean-nonnumber? x)
-                (not (some #'(lambda (x)
-                               (and (not (booleanp x)) (not (numberp x))))
-                           enumerated-domain)))
-           (setf (variable-possibly-nonboolean-nonnumber? x) nil))
-       (if (and (variable-possibly-nonreal-number? x)
-                (not (some #'(lambda (x) (and (not (realp x)) (numberp x)))
-                           enumerated-domain)))
-           (setf (variable-possibly-nonreal-number? x) nil))
-       (if (and (variable-possibly-noninteger-real? x)
-                (not (some #'(lambda (x) (and (not (integerp x)) (realp x)))
-                           enumerated-domain)))
-           (setf (variable-possibly-noninteger-real? x) nil))
-       (if (and (variable-possibly-integer? x)
-                (not (some #'integerp enumerated-domain)))
-           (setf (variable-possibly-integer? x) nil))
-       (if (variable-real? x)
-           (let ((lower-bound (reduce #'min enumerated-domain))
-                 (upper-bound (reduce #'max enumerated-domain)))
-             (if (or (null (variable-lower-bound x))
-                     (> lower-bound (variable-lower-bound x)))
-                 (setf (variable-lower-bound x) lower-bound))
-             (if (or (null (variable-upper-bound x))
-                     (< upper-bound (variable-upper-bound x)))
-                 (setf (variable-upper-bound x) upper-bound))))
-       (if (null (rest enumerated-domain))
-           (setf (variable-value x) (first enumerated-domain)))
-       t)
-      ((< (length enumerated-domain) (length (variable-enumerated-domain x)))
-       (setf (variable-enumerated-domain x) enumerated-domain)
-       (if (and (variable-possibly-boolean? x)
-                (not (some #'booleanp enumerated-domain)))
-           (setf (variable-possibly-boolean? x) nil))
-       (if (and (variable-possibly-nonboolean-nonnumber? x)
-                (not (some #'(lambda (x)
-                               (and (not (booleanp x)) (not (numberp x))))
-                           enumerated-domain)))
-           (setf (variable-possibly-nonboolean-nonnumber? x) nil))
-       (if (and (variable-possibly-nonreal-number? x)
-                (not (some #'(lambda (x) (and (not (realp x)) (numberp x)))
-                           enumerated-domain)))
-           (setf (variable-possibly-nonreal-number? x) nil))
-       (if (and (variable-possibly-noninteger-real? x)
-                (not (some #'(lambda (x) (and (not (integerp x)) (realp x)))
-                           enumerated-domain)))
-           (setf (variable-possibly-noninteger-real? x) nil))
-       (if (and (variable-possibly-integer? x)
-                (not (some #'integerp enumerated-domain)))
-           (setf (variable-possibly-integer? x) nil))
-       (if (variable-real? x)
-           (let ((lower-bound (reduce #'min enumerated-domain))
-                 (upper-bound (reduce #'max enumerated-domain)))
-             (if (or (null (variable-lower-bound x))
-                     (> lower-bound (variable-lower-bound x)))
-                 (setf (variable-lower-bound x) lower-bound))
-             (if (or (null (variable-upper-bound x))
-                     (< upper-bound (variable-upper-bound x)))
-                 (setf (variable-upper-bound x) upper-bound))))
-       (if (null (rest enumerated-domain))
-           (setf (variable-value x) (first enumerated-domain)))
-       t)
-      (t nil))))
+    (when
+        ;; Update enumerated domain if it needs to be updated
+        (cond
+          ((eq (variable-enumerated-domain x) t)
+           (setf (variable-enumerated-domain x) enumerated-domain)
+           (unless (null (variable-enumerated-antidomain x))
+             (setf (variable-enumerated-antidomain x) '()))
+           (if (and (variable-possibly-boolean? x)
+                    (not (some #'booleanp enumerated-domain)))
+               (setf (variable-possibly-boolean? x) nil))
+           (if (and (variable-possibly-nonboolean-nonnumber? x)
+                    (not (some #'(lambda (x)
+                                   (and (not (booleanp x)) (not (numberp x))))
+                               enumerated-domain)))
+               (setf (variable-possibly-nonboolean-nonnumber? x) nil))
+           (if (and (variable-possibly-nonreal-number? x)
+                    (not (some #'(lambda (x) (and (not (realp x)) (numberp x)))
+                               enumerated-domain)))
+               (setf (variable-possibly-nonreal-number? x) nil))
+           (if (and (variable-possibly-noninteger-real? x)
+                    (not (some #'(lambda (x) (and (not (integerp x)) (realp x)))
+                               enumerated-domain)))
+               (setf (variable-possibly-noninteger-real? x) nil))
+           (if (and (variable-possibly-integer? x)
+                    (not (some #'integerp enumerated-domain)))
+               (setf (variable-possibly-integer? x) nil))
+           (if (variable-real? x)
+               (let ((lower-bound (reduce #'min enumerated-domain))
+                     (upper-bound (reduce #'max enumerated-domain)))
+                 (if (or (null (variable-lower-bound x))
+                         (> lower-bound (variable-lower-bound x)))
+                     (setf (variable-lower-bound x) lower-bound))
+                 (if (or (null (variable-upper-bound x))
+                         (< upper-bound (variable-upper-bound x)))
+                     (setf (variable-upper-bound x) upper-bound))))
+           (if (null (rest enumerated-domain))
+               (setf (variable-value x) (first enumerated-domain)))
+           t)
+          ((< (length enumerated-domain) (length (variable-enumerated-domain x)))
+           (setf (variable-enumerated-domain x) enumerated-domain)
+           (if (and (variable-possibly-boolean? x)
+                    (not (some #'booleanp enumerated-domain)))
+               (setf (variable-possibly-boolean? x) nil))
+           (if (and (variable-possibly-nonboolean-nonnumber? x)
+                    (not (some #'(lambda (x)
+                                   (and (not (booleanp x)) (not (numberp x))))
+                               enumerated-domain)))
+               (setf (variable-possibly-nonboolean-nonnumber? x) nil))
+           (if (and (variable-possibly-nonreal-number? x)
+                    (not (some #'(lambda (x) (and (not (realp x)) (numberp x)))
+                               enumerated-domain)))
+               (setf (variable-possibly-nonreal-number? x) nil))
+           (if (and (variable-possibly-noninteger-real? x)
+                    (not (some #'(lambda (x) (and (not (integerp x)) (realp x)))
+                               enumerated-domain)))
+               (setf (variable-possibly-noninteger-real? x) nil))
+           (if (and (variable-possibly-integer? x)
+                    (not (some #'integerp enumerated-domain)))
+               (setf (variable-possibly-integer? x) nil))
+           (if (variable-real? x)
+               (let ((lower-bound (reduce #'min enumerated-domain))
+                     (upper-bound (reduce #'max enumerated-domain)))
+                 (if (or (null (variable-lower-bound x))
+                         (> lower-bound (variable-lower-bound x)))
+                     (setf (variable-lower-bound x) lower-bound))
+                 (if (or (null (variable-upper-bound x))
+                         (< upper-bound (variable-upper-bound x)))
+                     (setf (variable-upper-bound x) upper-bound))))
+           (if (null (rest enumerated-domain))
+               (setf (variable-value x) (first enumerated-domain)))
+           t))
+      ;; Enumerated domain was updated, so
+      ;; update `variable-type' of x
+      (setf (variable-type x)
+            ;; Annotate the type with the current enumerated domain
+            (serapeum:~>>
+             ;; Get the current variable type
+             (variable-type x)
+             ;; Remove prior enumeration types
+             ;; (e.g. from a prior run of
+             ;; `set-enumerated-domain!')
+             (remove-if
+              (serapeum:op
+                (match _
+                  ((guard
+                    (list* 'or args)
+                    ;; Every component of args is a `value'
+                    ;; form.
+                    (every (lambda-match ((list 'value _) t)) args))
+                   t))))
+             ;; Add the new domain
+             (cons (variable-enumerated-domain-type x))))
+      ;; Return t to signal success
+      t)))
 
 (defun restrict-enumerated-domain! (x enumerated-domain)
   ;; NOTE: X must be a variable such that (EQ X (VALUE-OF X)).
@@ -5981,7 +6005,8 @@ Otherwise returns the value of X."
                               :test #'equal)
               (intersection (variable-enumerated-domain x) enumerated-domain
                             :test #'equal)))
-    (if (set-enumerated-domain! x enumerated-domain) (run-noticers x))))
+    (when (set-enumerated-domain! x enumerated-domain)
+      (run-noticers x))))
 
 (defun restrict-enumerated-antidomain! (x enumerated-antidomain)
   ;; NOTE: X must be a variable such that (EQ X (VALUE-OF X)).
