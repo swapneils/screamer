@@ -512,8 +512,48 @@ For valid inputs, returns every type-component which falls under `type-specifier
      ;; none of the above types match
      (otherwise type-spec))))
 
+(defvar *rewrite-stack* nil
+  "Tracks the stack of variables whose types are being calculated,
+to prevent infinite loops.")
+
 (defparameter *rewrite-rules*
   `(
+    ;; Separate out `dependency-of' into
+    ;; `some' forms of any elements involving
+    ;; the current variable and a runtime
+    ;; viability check
+    (,(lambda (type) (and
+                      ;; We know the currently active variable
+                      (first *rewrite-stack*)
+                      ;; The type mentions being a dependency of other variables
+                      (some (lambda-match ((list* 'dependency-of _) t)) type)))
+     ,(lambda (type)
+        (mappend (lambda-match
+                   ((list* 'dependency-of vars)
+                    (mapcar (lambda (var)
+                              (let* ((successor-type (variable-type var))
+                                     (current-var (first *rewrite-stack*))
+                                     ;; Get the members of `successor-type'
+                                     ;; that explicitly mention `current-var'
+                                     (relevant-comps
+                                       (remove-if-not (op (member current-var (variables-in _)))
+                                                      successor-type)))
+                                ;; (print relevant-comps)
+                                ;; (print successor-type)
+                                `(and
+                                  ;; Insert `some' declarations for all
+                                  ;; components in `relevant-comps'
+                                  ;; NOTE: Some forms would cause issues
+                                  ;; if going through this, e.g. if there
+                                  ;; was a circular dependency. How to
+                                  ;; detect these issues?
+                                  ,@(mapcar (op `(some ,_)) relevant-comps)
+                                  ;; Track a runtime check to ensure
+                                  ;; that `var' itself isn't impossible
+                                  (possibly ,var))))
+                            vars))
+                   (form (list form)))
+                 type)))
     ;; Resolve mathematical types
     (,(lambda (type) (has-type-specifiers type '(+ - * /)))
      ,(lambda (type)
@@ -638,6 +678,7 @@ For valid inputs, returns every type-component which falls under `type-specifier
         ;; (print "enumerate")
         (iter:iter
           (iter:for comp in type)
+          (iter:for comp-type = (first comp))
           (iter:for vars = (remove-duplicates (variables-in comp)))
           (iter:for first-enumerated = (find-if (andf (notf #'bound?)
                                                       #'bounded?
@@ -646,7 +687,10 @@ For valid inputs, returns every type-component which falls under `type-specifier
                                                                #'variable-enumerated-domain))
                                                 vars))
           ;; Unless enumeration is possible, keep the component as-is and continue
-          (unless (and vars first-enumerated)
+          (unless (and
+                   ;; TODO: Factor out this special-casing to a generalizable system
+                   (not (member comp-type '(possibly dependency-of)))
+                   vars first-enumerated)
             (iter:collect comp)
             (iter:next-iteration))
 
@@ -683,13 +727,9 @@ variable-type form. Both functions take a list
 representing the current variable type as input.
 
 If the third element of the list is `:recursive',
-`apply-rewrite-rules' will recursively walk
+`apply-rewrite-rules-internal' will recursively walk
 the type specification looking for somewhere to apply
 the rule.")
-
-(defvar *rewrite-stack* nil
-  "Tracks the stack of variables whose types are being calculated,
-to prevent infinite loops.")
 
 ;;; FIXME: Currently this needs to be re-reun
 ;;; from the initial type of the variable
@@ -700,34 +740,53 @@ to prevent infinite loops.")
 ;;; variables, which is an invalid optimization
 ;;; in the presence of changes/assertions to those
 ;;; variables.
-(cl:defun apply-rewrite-rules (type-spec)
+;;; FIXME: Use keyword symbols in types
+(cl:defun apply-rewrite-rules-internal (type-spec)
+  (declare (optimize (debug 3)))
   (typecase type-spec
+    ;; TODO: Move this logic to `apply-rewrite-rules'
+    ;; and keep the `-internal' version only for `cons'
+    ;; inputs
     (variable
      (cond
        ((bound? type-spec) `((value ,(value-of type-spec))))
        ((member type-spec *rewrite-stack*) type-spec)
        (t (let ((*rewrite-stack* (cons type-spec *rewrite-stack*)))
-            (apply-rewrite-rules (variable-type type-spec))))))
+            ;; (print (list 'calling-var (variable-type type-spec)))
+            (apply-rewrite-rules-internal (variable-type type-spec))))))
     (cons
+     ;; (print (list 'init type-spec))
      (labels ((modify-if (comp requirements modifier)
-                (typecase comp
-                  (atom comp)
-                  (list
-                   ;; Note: requirements functions
-                   ;; are only created to deal with full type specs
-                   (if (funcall requirements (list comp))
-                       (first (funcall modifier (list comp)))
-                       (mapcar (lambda (el) (modify-if el requirements modifier)) comp)))
-                  (otherwise comp))))
+                (let ((non-recursing '(dependency-of possibly)))
+                  (typecase comp
+                    (atom comp)
+                    (list
+                     (match comp
+                       ;; If a non-recursing form, don't modify it
+                       ((guard (list* comp-type _) (member comp-type non-recursing)) comp)
+                       ;; If no special-casing, check
+                       ;; `requirements' to see if
+                       ;; `modifier' should be applied
+                       ;; Note: requirements functions
+                       ;; are only created to deal with full type specs
+                       (_
+                        (if (funcall requirements (list comp))
+                            (first (funcall modifier (list comp)))
+                            (mapcar (lambda (el) (modify-if el requirements modifier)) comp)))))
+                    (otherwise comp)))))
        (iter:iter
          (iter:for prev-type = type-spec)
+         ;; (print (list 'prev prev-type))
+         ;; (setf type-spec (mappend (lambda-match
+         ;;                            ((list* 'and args) args)
+         ;;                            (form (list form)))
+         ;;                          type-spec))
          (iter:iter (iter:for rule in *rewrite-rules*)
            (iter:for (requirements modifier) = rule)
            (iter:for recurse? = (third rule))
            (when (funcall requirements type-spec)
              (serapeum:callf modifier type-spec))
-           (when recurse?
-             (setf type-spec (mapcar (lambda (comp) (modify-if comp requirements modifier)) type-spec))))
+           (when recurse? (setf type-spec (mapcar (rcurry #'modify-if requirements modifier) type-spec))))
          ;; If something was changed, keep going
          (iter:while
              (or
@@ -738,6 +797,11 @@ to prevent infinite loops.")
          (iter:until (some (lambda-match ((list 'value _) t)) type-spec))))
      type-spec)
     (otherwise type-spec)))
+
+;;; The external interface should only accept variables,
+;;; so we can rely on `*rewrite-stack*'.
+(cl:defun apply-rewrite-rules (var)
+  (apply-rewrite-rules-internal var))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (hash-table *function-record-table*)))
