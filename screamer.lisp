@@ -410,8 +410,8 @@ For valid inputs, returns every type-component which falls under `type-specifier
                                    (second comp)
                                    comp))
                              params)))
-        (trivia:match type-spec
-          ((trivia:guard
+        (match type-spec
+          ((guard
             (list* '+ _)
             (ground? type-spec))
            (let* ((params (mapcar #'resolve-math-type params))
@@ -423,7 +423,7 @@ For valid inputs, returns every type-component which falls under `type-specifier
                  (apply #'+ params)
                  ;; Return the simplified type
                  (cons '+ params))))
-          ((trivia:guard
+          ((guard
             (list* '- _)
             (ground? type-spec))
            (let* ((params (mapcar #'resolve-math-type params))
@@ -435,7 +435,7 @@ For valid inputs, returns every type-component which falls under `type-specifier
                  (apply #'- params)
                  ;; Return the simplified type
                  (cons '- params))))
-          ((trivia:guard
+          ((guard
             (list* '* _)
             (ground? type-spec))
            (let* ((params (mapcar #'resolve-math-type params))
@@ -447,7 +447,7 @@ For valid inputs, returns every type-component which falls under `type-specifier
                  (apply #'* params)
                  ;; Return the simplified type
                  (cons '* params))))
-          ((trivia:guard
+          ((guard
             (list* '/ _)
             (ground? type-spec))
            (let* ((params (mapcar #'resolve-math-type params))
@@ -465,7 +465,7 @@ For valid inputs, returns every type-component which falls under `type-specifier
           ;; operation, separate the bound and
           ;; unbound values to resolve the bound
           ;; ones separately.
-          ((trivia:guard
+          ((guard
             (list* (member '(+ *)) others)
             (and (some #'bound? others)
                  (> (count-if (notf #'bound?) others) 1)))
@@ -477,7 +477,7 @@ For valid inputs, returns every type-component which falls under `type-specifier
           ;; If duplicate values are detected,
           ;; merge them together into multiplication
           ;; forms to make calculation easier
-          ((trivia:guard
+          ((guard
             (list* '+ others)
             (not (equal others (remove-duplicates others))))
            (let ((uniques (serapeum:dict)))
@@ -504,10 +504,13 @@ For valid inputs, returns every type-component which falls under `type-specifier
                  simplified
                  ;; If we simplified something, check if the
                  ;; simplified form reveals new mathematical optimizations
-                 (resolve-math-type simplified))))))))
-   ;; Don't do any resolution if
-   ;; none of the above rules match
-   type-spec))
+                 (resolve-math-type simplified))))
+          ;; Fallback case for lists, just return
+          ;; the value
+          (_ type-spec))))
+     ;; Don't do any resolution if
+     ;; none of the above types match
+     (otherwise type-spec))))
 
 (defparameter *rewrite-rules*
   `(
@@ -732,7 +735,7 @@ to prevent infinite loops.")
               (set-difference prev-type type-spec :test #'equal)))
          ;; If there is a definite value in type-spec, don't keep
          ;; applying rewrite-rules
-         (iter:until (some (compose (curry #'equal 'value) #'first) type-spec))))
+         (iter:until (some (lambda-match ((list 'value _) t)) type-spec))))
      type-spec)
     (otherwise type-spec)))
 
@@ -9800,6 +9803,10 @@ VALUES can be either a vector or a list designator."
       ;; Filter out dependencies that are already tracked
       ;; NOTE: Kludged
       (setf new-vars (set-difference deps variables))
+      ;; (print (list 'deps deps 'vars variables 'new new-vars))
+      ;; (print (list 'var-types (mapcar #'variable-type variables)))
+      ;; (print (list 'dep-types (mapcar #'variable-type deps)))
+      ;; (print (list 'dep-deps (mapcar #'variable-dependencies deps)))
       ;; Sort new dependencies to force bounded variables first
       (setf new-vars (sort new-vars (lambda (a b) (and (bounded? a) (not (bounded? b))))))
       ;; Add each layer of dependencies to the start of the variable list
