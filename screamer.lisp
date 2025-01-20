@@ -3108,7 +3108,7 @@ gives equal probability to 1 and 2)."
                                         (s:filter prob-pred)
                                         ;; Extract probability values
                                         (mapcar #'second)))
-                  (prob-provided (or prob-provided (cached-list 1)))
+                  (prob-provided (or prob-provided (list 1)))
                   (prob-sum (apply #'+ prob-provided))
                   (prob-avg (/ prob-sum (length prob-provided)))
                   (prob-sum (* prob-avg (length alt-list)))
@@ -3119,21 +3119,21 @@ gives equal probability to 1 and 2)."
                                                    #'length)))
                   (alt-list (mapcar (lambda (elem)
                                       (if (funcall prob-ignore-pred elem)
-                                          (cached-list (first elem)
-                                                       prob-avg)
+                                          (list (first elem)
+                                                prob-avg)
                                           elem))
                                     alt-list))
                   (normalized (mapcar (lambda (elem)
                                         (if (funcall prob-pred elem)
-                                            (cached-list (first elem)
-                                                         (/ (second elem)
-                                                            prob-sum))
-                                            (cached-list elem
-                                                         (/ prob-avg
-                                                            prob-sum))))
+                                            (list (first elem)
+                                                  (/ (second elem)
+                                                     prob-sum))
+                                            (list elem
+                                                  (/ prob-avg
+                                                     prob-sum))))
                                       alt-list)))
-             (release-list prob-provided)
-             (release-list alt-list)
+             (list prob-provided)
+             (list alt-list)
              normalized)))
     `(either-prob-internal
        ,@(sort (normalize alternatives) #'> :key #'second))))
@@ -3271,9 +3271,9 @@ ALL-VALUES is analogous to the `bagof' primitive in Prolog."
          (let* ((,value (progn ,@body))
                 (,value (copy-output-value ,value)))
            (global (if (null ,values)
-                       (setf *last-value-cons* (cached-list ,value)
+                       (setf *last-value-cons* (list ,value)
                              ,values *last-value-cons*)
-                       (setf (rest *last-value-cons*) (cached-list ,value)
+                       (setf (rest *last-value-cons*) (list ,value)
                              *last-value-cons* (rest *last-value-cons*))))))
        (if *possibility-consolidator*
            (flet ((merge-vals (vals)
@@ -3281,9 +3281,9 @@ ALL-VALUES is analogous to the `bagof' primitive in Prolog."
                       (mapc (lambda (v)
                               (unless (position v prev
                                                 :test *possibility-consolidator*)
-                                (cached-push v prev)))
+                                (push v prev)))
                             vals)
-                      (release-list vals)
+                      (list vals)
                       prev)))
              (merge-vals ,values))
            ,values))))
@@ -3316,13 +3316,13 @@ sum of the probabilities returned will be less than 1."
          (let* ((,value (progn ,@body))
                 (,value (copy-output-value ,value)))
            (global (if (null ,values)
-                       (setf *last-value-cons* (cached-list
-                                                (cached-list ,value
-                                                             (current-probability *trail*)))
+                       (setf *last-value-cons* (list
+                                                (list ,value
+                                                      (current-probability *trail*)))
                              ,values *last-value-cons*)
-                       (setf (rest *last-value-cons*) (cached-list
-                                                       (cached-list ,value
-                                                                    (current-probability *trail*)))
+                       (setf (rest *last-value-cons*) (list
+                                                       (list ,value
+                                                             (current-probability *trail*)))
                              *last-value-cons* (rest *last-value-cons*))))))
        ;; Return to enclosing trail context
        (unwind-trail-to ,pointer)
@@ -3335,10 +3335,10 @@ sum of the probabilities returned will be less than 1."
                                                        :test *possibility-consolidator*))
                                 (progn (incf (second prev-val)
                                              (second v))
-                                       (release-cons v))
-                                (cached-push v prev)))
+                                       (cons v))
+                                (push v prev)))
                             vals)
-                      (release-list vals)
+                      (list vals)
                       prev)))
              (merge-vals ,values))
            ,values))))
@@ -3373,7 +3373,7 @@ Returns NIL if all branches of BODY fail."
            (unless (zerop (second ,aggregates))
              (/ (first ,aggregates) (second ,aggregates)))
          ;; Release the juxt list to the cons cache
-         (release-list ,aggregates))))
+         (list ,aggregates))))
   ;; NOTE: Old version of this code
   ;; `(s:nest
   ;;   (funcall (lambda (x)
@@ -3381,7 +3381,7 @@ Returns NIL if all branches of BODY fail."
   ;;                  (unless (zerop (second x))
   ;;                    (/ (first x) (second x)))
   ;;                ;; Release the juxt list to the cons cache
-  ;;                (release-list x))))
+  ;;                (list x))))
   ;;   (funcall (s:juxt (lambda (x) (reduce #'+ x :key (curry #'reduce #'*)))
   ;;                    (lambda (x) (reduce #'+ x :key #'second))))
   ;;   (all-values-prob ,@body))
@@ -3440,11 +3440,11 @@ N."
                        (,value (copy-output-value ,value)))
 
                   ;; Add the value to the collected list
-                  (appendf ,value-list (cached-list ,value))
+                  (appendf ,value-list (list ,value))
                   ;; (if (null ,value-list)
-                  ;;     (setf *last-value-cons* (cached-list ,value)
+                  ;;     (setf *last-value-cons* (list ,value)
                   ;;           ,value-list *last-value-cons*)
-                  ;;     (setf (rest *last-value-cons*) (cached-list ,value)
+                  ;;     (setf (rest *last-value-cons*) (list ,value)
                   ;;           *last-value-cons* (rest *last-value-cons*)))
                   (when (>= (length ,value-list) (second ,acc-strat))
                     ;; (return-from n-values ,value-list)
@@ -3475,14 +3475,14 @@ See the docstring of `ALL-VALUES-PROB' for more details."
                 (unless (zerop (second ,acc-strat))
                   (let* ((,value (progn ,@body))
                          (,value (copy-output-value ,value))
-                         (,value (cached-list ,value
-                                              (current-probability *trail*))))
+                         (,value (list ,value
+                                       (current-probability *trail*))))
                     ;; Add the value to the collected list
-                    (appendf ,value-list (cached-list ,value))
+                    (appendf ,value-list (list ,value))
                     ;; (if (null ,value-list)
-                    ;;     (setf *last-value-cons* (cached-list ,value)
+                    ;;     (setf *last-value-cons* (list ,value)
                     ;;           ,value-list *last-value-cons*)
-                    ;;     (setf (rest *last-value-cons*) (cached-list ,value)
+                    ;;     (setf (rest *last-value-cons*) (list ,value)
                     ;;           *last-value-cons* (rest *last-value-cons*)))
                     (when (>= (length ,value-list) (second ,acc-strat))
                       ;; Return to enclosing trail context
@@ -3780,7 +3780,7 @@ selection (due to either a normal return, or calling FAIL.)"
                 ;; Complex trail elements always have a function or nil as their first element
                 (setf fun (car fun))
                 ;; A trail element should not be referred to after it is released, so we can reuse the cons
-                (release-cons c)))
+                (cons c)))
             (when (functionp fun)
               (funcall fun)))
           ;; NOTE: This is to allow the trail closures to be garbage collected.
@@ -4465,9 +4465,9 @@ similar form."
             ;; Normalize a list-distribution given the sum
             ;; of the probabilities
             (mapcar (lambda (c)
-                      (cached-list (first c)
-                                   (/ (second c)
-                                      psum)))
+                      (list (first c)
+                            (/ (second c)
+                               psum)))
                     d))))
    ;; Normalize the input distribution if its a plist
    (let ((source (typecase source
@@ -4481,7 +4481,7 @@ similar form."
    (flet ((sample-internal (source)
             (typecase source
               ((or function nondeterministic-function)
-               (let* ((ret nil) (local-cont (lambda (inp) (cached-push inp ret))))
+               (let* ((ret nil) (local-cont (lambda (inp) (push inp ret))))
                  (catch '%fail
                    (funcall-nondeterministic-nondeterministic local-cont source))
                  ;; Fail unless we have some outputs
@@ -4502,7 +4502,7 @@ similar form."
                                (iter:while (< sum selection))
                                ;; Return the current index
                                (iter:finally (return i)))))
-                 (release-list probs)
+                 (list probs)
                  ;; Return a 1-element list to match the format of
                  ;; function `source's
                  (list (nth index source))))))
@@ -4676,9 +4676,9 @@ TIMES must be a non-negative integer."
                 (list
                  (or (assoc state machine :test test)
                      ;; If not found, loop to the same state
-                     (cached-list state (cached-list state 1))))
+                     (list state (list state 1))))
                 (function
-                 (cached-cons state (funcall machine state)))))))
+                 (cons state (funcall machine state)))))))
    ;; For alist state-machines, fail unless all transition-probability sets sum to 1
    (if (and alist-machine
             (some (s:nest
@@ -4703,7 +4703,7 @@ TIMES must be a non-negative integer."
                                     (float-precision *numeric-bounds-collapse-threshold*)))))
    (labels ((recurse-transitions (start &optional (n 1))
               ;; Get the starting probability distribution
-              (let ((state-probs (cached-list (cached-list start 1)))
+              (let ((state-probs (list (list start 1)))
                     ;; Track the next probability distribution
                     (new-probs nil))
                 (s:nest
@@ -4713,8 +4713,8 @@ TIMES must be a non-negative integer."
                  ;; so we can increment them
                  (labels ((get-new-prob (state)
                             (or (assoc state new-probs :test test)
-                                (let ((c (cached-list state 0)))
-                                  (cached-push c new-probs)
+                                (let ((c (list state 0)))
+                                  (push c new-probs)
                                   c)))))
 
                  ;; Recurse over the state machine n times
@@ -4736,7 +4736,7 @@ TIMES must be a non-negative integer."
                        ;; times the odds of the transition
                        (incf (second targ-new-prob) (* p targ-p)))
                      (unless alist-machine
-                       (release-cons s-spec)))
+                       (cons s-spec)))
 
                    ;; If the state machine stabilizes, return early
                    ;; NOTE: We don't do this for function machines,
@@ -4745,14 +4745,14 @@ TIMES must be a non-negative integer."
                    (when (and alist-machine
                               (zerop (mod i recursion-check-interval))
                               (equal state-probs new-probs))
-                     (mapc #'release-list state-probs)
-                     (release-list state-probs)
+                     (mapc #'list state-probs)
+                     (list state-probs)
                      (setf state-probs new-probs)
                      (return-from short-circuit))
 
                    ;; Replace the old probability state with the new one
-                   (mapc #'release-list state-probs)
-                   (release-list state-probs)
+                   (mapc #'list state-probs)
+                   (list state-probs)
                    (setf state-probs new-probs)))
 
                 ;; Return the state probabilities after everything
@@ -4899,13 +4899,13 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
               (i low (1+ i)))
              ((> i high) (nreverse result))
            (declare (type fixnum i))
-           (cached-push i result)))
+           (push i result)))
         (t
          ;; KLUDGE: As above.
          (do ((result nil)
               (i low (1+ i)))
              ((> i high) (nreverse result))
-           (cached-push i result)))))
+           (push i result)))))
 
 (cl:defun booleanp (x)
   "Returns true iff X is T or NIL."
@@ -4933,7 +4933,7 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
   (declare (optimize (speed 3) (space 3)))
   (if (contains-variables? x)
       (typecase x
-        (cons (cached-cons (eliminate-variables (car x)) (eliminate-variables (cdr x))))
+        (cons (cons (eliminate-variables (car x)) (eliminate-variables (cdr x))))
         (vector (map 'vector #'eliminate-variables x))
         (t (eliminate-variables (value-of x))))
       x))
@@ -5211,7 +5211,7 @@ Otherwise returns the value of X."
        (unless (noticer-member noticer x)
          ;; NOTE: This can't be a PUSH because of the Lucid screw.
          (local (setf (variable-noticers x)
-                      (cached-cons noticer (variable-noticers x)))))
+                      (cons noticer (variable-noticers x)))))
        (attach-noticer!-internal noticer (variable-value x)))))
 
 (defun attach-noticer! (noticer x &key dependencies)
@@ -5836,12 +5836,12 @@ Otherwise returns the value of X."
     (cond ((eq (variable-enumerated-domain x) t)
            ;; needs work: This is sound only if VALUE does not contain any
            ;;             variables.
-           (setf (variable-enumerated-domain x) (cached-list value))
+           (setf (variable-enumerated-domain x) (list value))
            (setf (variable-enumerated-antidomain x) '()))
           ((not (null (rest (variable-enumerated-domain x))))
            ;; needs work: This is sound only if VALUE does not contain any
            ;;             variables.
-           (setf (variable-enumerated-domain x) (cached-list value)))))
+           (setf (variable-enumerated-domain x) (list value)))))
   (run-noticers x))
 
 (defun restrict-true! (x)
@@ -6367,13 +6367,13 @@ Otherwise returns the value of X."
            (if (listp (variable-enumerated-domain y))
                (when (member (value-of xv) (variable-enumerated-domain y))
                  (restrict-enumerated-domain! y (remove (value-of xv) (variable-enumerated-domain y))))
-               (restrict-enumerated-antidomain! y (cached-cons (value-of xv) (variable-enumerated-antidomain y)))))
+               (restrict-enumerated-antidomain! y (cons (value-of xv) (variable-enumerated-antidomain y)))))
           ((and (bound? yv)
                 (variable? x))
            (if (listp (variable-enumerated-domain x))
                (when (member (value-of yv) (variable-enumerated-domain x))
                  (restrict-enumerated-domain! x (remove (value-of yv) (variable-enumerated-domain x))))
-               (restrict-enumerated-antidomain! x (cached-cons (value-of yv) (variable-enumerated-antidomain x))))))))
+               (restrict-enumerated-antidomain! x (cons (value-of yv) (variable-enumerated-antidomain x))))))))
 
 ;;; Lifted Arithmetic Functions (Two argument optimized)
 
@@ -7312,8 +7312,8 @@ arguments. Secondly, any non-boolean argument causes it to fail."
           (let ((x (first xrest))
                 (p (first prest)))
             (unless (eq x (not p))
-              (cached-push x new-xs)
-              (cached-push p new-ps))))
+              (push x new-xs)
+              (push p new-ps))))
         (let ((count (length new-xs)))
           (cond ((zerop count) (fail))
                 ((= count 1)
@@ -7596,13 +7596,13 @@ sufficient hooks for the user to define her own force functions.)"
                                          variables
                                          variable-values)))
                       (variable-enumerated-domain unassigned-variable)))))
-          (release-list variable-values)
+          (list variable-values)
           (if (set-enumerated-domain! unassigned-variable new-enumerated-domain)
               (run-noticers unassigned-variable))))))
 
 (defun a-tuple (variables variable value)
   (unless (null variables)
-    (cached-cons (cond ((eq (first variables) variable) value)
+    (cons (cond ((eq (first variables) variable) value)
                        ((variable? (first variables))
                         (a-member-of (variable-enumerated-domain (first variables))))
                        (t (first variables)))
@@ -7723,7 +7723,7 @@ restricted to be consistent with other arguments."
         (apply f (mapcar #'value-of x))
         (let ((z (make-variable)))
           (assert!-constraint
-           #'(lambda (&rest x) (equal (first x) (apply f (rest x)))) t (cached-cons z x))
+           #'(lambda (&rest x) (equal (first x) (apply f (rest x)))) t (cons z x))
           (dolist (argument x)
             (attach-noticer!
              #'(lambda ()
@@ -7733,10 +7733,10 @@ restricted to be consistent with other arguments."
           z))))
 
 (defun arguments-for-applyv (x xs)
-  (unless (bound? (first (last (cached-cons x xs))))
+  (unless (bound? (first (last (cons x xs))))
     (error "The current implementation does not allow the last argument to~%~
           APPLYV to be an unbound variable"))
-  (apply #'list* (mapcar #'value-of (cached-cons x xs))))
+  (apply #'list* (mapcar #'value-of (cons x xs))))
 
 (defun known?-applyv (f x &rest xs)
   (known?-constraint f t (arguments-for-applyv x xs)))
@@ -7780,7 +7780,7 @@ restricted to be consistent with other arguments."
             (assert!-constraint
              #'(lambda (&rest x) (equal (first x) (apply f (rest x))))
              t
-             (cached-cons z arguments))
+             (cons z arguments))
             (dolist (argument arguments)
               (attach-noticer!
                #'(lambda ()
@@ -7828,17 +7828,21 @@ the remaining argument. Otherwise returns number variable V.
 
 Note: Numeric contagion rules of Common Lisp are not applied if either
 argument equals zero."
-  (let* ((uniques (sort (remove-duplicates xs)
-                        ;; Put bound values first
-                        (serapeum:op (and (bound? _) (not (bound? _))))))
-         (counts (mapcar (rcurry #'count xs) uniques))
-         (new-xs nil))
-    (declare (dynamic-extent uniques counts))
-    (dotimes (i (length uniques))
-      (let ((c (nth i counts))
-            (x (nth i uniques)))
-        (push (*v x c) new-xs)))
-    (+v-internal new-xs)))
+  ;; FIXME: Changing this for testing the type system, need
+  ;; to change it back afterwards.
+  (+v-internal xs)
+  ;; (let* ((uniques (sort (remove-duplicates xs)
+  ;;                       ;; Put bound values first
+  ;;                       (serapeum:op (and (bound? _) (not (bound? _))))))
+  ;;        (counts (mapcar (rcurry #'count xs) uniques))
+  ;;        (new-xs nil))
+  ;;   (declare (dynamic-extent uniques counts))
+  ;;   (dotimes (i (length uniques))
+  ;;     (let ((c (nth i counts))
+  ;;           (x (nth i uniques)))
+  ;;       (push (*v x c) new-xs)))
+  ;;   (+v-internal new-xs))
+  )
 
 (defun -v-internal (x xs)
   (if (null xs) x (-v-internal (-v2 x (first xs)) (rest xs))))
@@ -8483,7 +8487,7 @@ X2."
                      (restrict-enumerated-domain! var
                                                   (remove (value-of val) dom)))
                    (restrict-enumerated-antidomain! var
-                                                    (cached-cons (value-of val) antidom))))))
+                                                    (cons (value-of val) antidom))))))
     (let ((xv (value-of x))
           (yv (value-of y)))
       (when (known?-==v2 x y) (fail))
@@ -8522,8 +8526,8 @@ X2."
            (if (or (not (bound? a))
                    (not (bound? b)))
                (progn
-                 (cached-push a a-variables)
-                 (cached-push b b-variables))
+                 (push a a-variables)
+                 (push b b-variables))
                (unless (equalp (value-of a) (value-of b))
                  (setf known-mismatch t)
                  (return nil))))
@@ -9293,7 +9297,7 @@ VALUES can be either a vector or a list designator."
                                   (appendf coll (variables-in v)))
                                 x)
                        coll))
-         (variable (cached-list x))
+         (variable (list x))
          (otherwise nil))))
 
 ;;; NOTE: SOLUTION and LINEAR-FORCE used to be here but was moved to be before
@@ -9551,13 +9555,13 @@ nikodemus@random-state.net."
        (if binding
            (values (cdr binding) variables)
            (let ((variable (make-variable template)))
-             (values variable (cached-cons (cached-cons template variable) variables))))))
+             (values variable (cons (cons template variable) variables))))))
     ((consp template)
      (cl:multiple-value-bind (car-template car-variables)
          (template-internal (car template) variables)
        (cl:multiple-value-bind (cdr-template cdr-variables)
            (template-internal (cdr template) car-variables)
-         (values (cached-cons car-template cdr-template) cdr-variables))))
+         (values (cons car-template cdr-template) cdr-variables))))
     (t (values template variables))))
 
 (defun template (template)
