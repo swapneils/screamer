@@ -339,6 +339,16 @@ in comparison to `cl:mapcar'"
   (lambda (&rest xs)
     (some (rcurry #'apply xs) fs)))
 
+(cl:defun variable-enumerated-domain-type (var)
+  (declare (optimize (speed 3) (space 3) (debug 0)))
+  (when (and (variable? var)
+             ;; Has non-null enumerated domain
+             (variable-enumerated-domain var)
+             ;; Has an actual list of enumerated values
+             (listp (variable-enumerated-domain var)))
+    ;; Return an or type containing the different values
+    `(or ,@(mapcar (serapeum:op `(value ,_)) (variable-enumerated-domain var)))))
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
      (declaim (hash-table *function-record-table*)))
 (defvar-compile-time *function-record-table* (make-hash-table :test #'equal)
