@@ -414,7 +414,7 @@ in comparison to `cl:mapcar'"
   4. the body of an N-VALUES or N-VALUES-PROB macro invocation
   5. the first argument of a ONE-VALUE macro invocation
   6. the body of a PRINT-VALUES macro invocation
-  7. the second argument of an ITH-VALUE macro invocation
+  7. the second argument of an ITH-VALUE or KTH-VALUE macro invocation
   8. the body of a POSSIBLY? macro invocation
   9. the body of a NECESSARILY? macro invocation.
  10. the body of a UNIQUELY? macro invocation.
@@ -3492,54 +3492,58 @@ See the docstring of `ALL-VALUES-PROB' for more details."
            ;; Return to enclosing trail context
            (unwind-trail-to ,pointer))))))
 
-(defmacro-compile-time ith-value ((i &key (default '(fail))) &body body)
-  "Returns the Ith nondeterministic value yielded by BODY.
+(defmacro-compile-time kth-value ((k &key (default '(fail))) &body body)
+  "Returns the Kth nondeterministic value yielded by BODY.
 
-I must be an integer. The first nondeterministic value yielded by BODY is
-numbered zero, the second one, etc. The Ith value is produced by repeatedly
-evaluating BODY, backtracking through and discarding the first I values and
+K must be an integer. The first nondeterministic value yielded by BODY is
+numbered zero, the second one, etc. The Kth value is produced by repeatedly
+evaluating BODY, backtracking through and discarding the first K values and
 deterministically returning the next value produced.
 
 No further execution of BODY is attempted after it successfully yields the
 desired value.
 
 If BODY fails before yielding both the I values to be discarded, as well as
-the desired Ith value, then DEFAULT is evaluated and its value returned
+the desired Kth value, then DEFAULT is evaluated and its value returned
 instead. DEFAULT defaults to \(FAIL) if not present.
 
-Local side effects performed by BODY are undone when ITH-VALUE returns, but
-local side effects performed by DEFAULT and by I are not undone when ITH-VALUE
+Local side effects performed by BODY are undone when KTH-VALUE returns, but
+local side effects performed by DEFAULT and by I are not undone when KTH-VALUE
 returns.
 
-An ITH-VALUE expression can appear in both deterministic and nondeterministic
-contexts. Irrespective of what context the ITH-VALUE appears in, BODY is
+An KTH-VALUE expression can appear in both deterministic and nondeterministic
+contexts. Irrespective of what context the KTH-VALUE appears in, BODY is
 always in a nondeterministic context, while DEFAULT and I are in whatever
-context the ITH-VALUE appears in.
+context the KTH-VALUE appears in.
 
-An ITH-VALUE expression is nondeterministic if DEFAULT is present and is
+An KTH-VALUE expression is nondeterministic if DEFAULT is present and is
 nondeterministic, or if I is nondeterministic. Otherwise it is deterministic.
 
 If DEFAULT is present and nondeterministic, and if BODY fails, then it is
-possible to backtrack into the DEFAULT and for the ITH-VALUE expression to
+possible to backtrack into the DEFAULT and for the KTH-VALUE expression to
 nondeterministically return multiple times.
 
-If I is nondeterministic then the ITH-VALUE expression operates
+If I is nondeterministic then the KTH-VALUE expression operates
 nondeterministically on each value of I. In this case, backtracking for each
 value of BODY and DEFAULT is nested in, and restarted for, each backtrack of
 I."
   `(car
     (last
-     (n-values ((1+ ,i) :default (list ,default))
-       ,@body)))
-  ;; (let ((counter (gensym "I")))
-  ;;   `(block ith-value
-  ;;      (let ((,counter (value-of ,i)))
-  ;;        (for-effects (let ((value (progn ,@body)))
-  ;;                       (if (zerop ,counter)
-  ;;                           (return-from ith-value value)
-  ;;                           (decf ,counter))))
-  ;;        (when ,default-on-failure ,default))))
-  )
+     (n-values ((1+ ,k) :default (list ,default))
+       ,@body))))
+
+(defmacro-compile-time ith-value (i form &optional (default '(fail)))
+  "DEPRECATED
+This form is retained for compatibility with classic Screamer. Please use
+`KTH-VALUE' instead."
+  (let ((counter (gensym "I")))
+    `(block ith-value
+       (let ((,counter (value-of ,i)))
+         (for-effects (let ((value ,form))
+                        (if (zerop ,counter)
+                            (return-from ith-value value)
+                            (decf ,counter))))
+         ,default))))
 
 (defmacro-compile-time one-value (form &optional (default '(fail)))
   "Returns the first nondeterministic value yielded by FORM.
@@ -3566,7 +3570,7 @@ If DEFAULT is present and nondeterministic, and if FORM fails, then it is
 possible to backtrack into the DEFAULT and for the ONE-VALUE form to
 nondeterministically return multiple times. ONE-VALUE is analogous to the cut
 primitive \(`!') in Prolog."
-  `(ith-value (0 :default ,default) ,form))
+  `(kth-value (0 :default ,default) ,form))
 
 (defmacro-compile-time possibly? (&body body)
   "Evaluates BODY as an implicit PROGN in nondeterministic context,

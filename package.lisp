@@ -38,7 +38,7 @@
            #:multiple-value-call-nondeterministic
            #:possibly?
            #:necessarily?
-           #:one-value #:all-values #:n-values #:ith-value
+           #:one-value #:all-values #:n-values #:kth-value #:ith-value
            #:print-values
            #:nondeterministic-function?
            #:funcall-nondeterministic
