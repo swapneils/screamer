@@ -5499,14 +5499,14 @@ Otherwise returns the value of X."
       (when (and (variable-lower-bound x)
                  (variable-upper-bound x)
                  (roughly-= (variable-upper-bound x) (variable-lower-bound x)))
-        (setf (variable-value x) (variable-lower-bound x)))
+        (local (setf (variable-value x) (variable-lower-bound x))))
       (run-noticers x))))
 
 (defun restrict-upper-bound! (x upper-bound)
   ;; NOTE: X must be a variable.
   ;; NOTE: UPPER-BOUND must be a real constant.
   (when (variable-integer? x)
-    (setf upper-bound (floor upper-bound)))
+    (local (setf upper-bound (floor upper-bound))))
   (when (and (or (eq (variable-value x) x) (not (variable? (variable-value x))))
              (or (not (variable-upper-bound x))
                  (< upper-bound (variable-upper-bound x))))
@@ -5538,7 +5538,7 @@ Otherwise returns the value of X."
       (when (and (variable-lower-bound x)
                  (variable-upper-bound x)
                  (roughly-= (variable-lower-bound x) (variable-upper-bound x)))
-        (setf (variable-value x) (variable-lower-bound x)))
+        (local (setf (variable-value x) (variable-lower-bound x))))
       (run-noticers x))))
 
 (defun restrict-bounds! (x lower-bound upper-bound)
@@ -5608,10 +5608,10 @@ Otherwise returns the value of X."
                 (lower (variable-lower-bound x)))
             (when (or (and (numberp domain) (= domain 1))
                       (and (numberp range) (roughly-= range 0)))
-              (setf (variable-value x)
-                    (cond ((listp enumerated) (first enumerated))
-                          (lower lower)
-                          (t (variable-value x))))))
+              (local (setf (variable-value x)
+                     (cond ((listp enumerated) (first enumerated))
+                           (lower lower)
+                           (t (variable-value x)))))))
           (run-noticers x)))))
 
 (defun prune-enumerated-domain (x &optional (enumerated-domain (variable-enumerated-domain x)))
