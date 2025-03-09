@@ -313,3 +313,10 @@
     (is (= (alexandria:mean (subseq result 0 11)) 5))
     ;; Non-integer guesses also average to 5
     (is (= (alexandria:mean (subseq result 11 21)) 5))))
+
+(deftest divide-and-conquer-works-with-no-maximum-discretization-range ()
+  (let* ((*maximum-discretization-range* nil)
+         (result (n-values (13)
+                   (solution (a-real-betweenv 0 10)
+                             (static-ordering #'divide-and-conquer-force)))))
+    (is (= (length result) 13))))

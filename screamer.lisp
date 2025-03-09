@@ -9432,9 +9432,8 @@ domain size is odd, the halves differ in size by at most one."
                  (let ((midpoint (/ (+ upper-bound lower-bound) 2)))
                    ;; Check various heuristics before deciding to bifurcate
                    (cond
-                     ;; When the range is known to be less than
-                     ;; `*maximum-discretization-range*' and `variable' might
-                     ;; be an integer, try restricting variable to an integer
+                     ;; When `variable' might be an integer, try restricting
+                     ;; it to an integer.
                      ((and
                        ;; If `variable' can't be an integer,
                        ;; don't bother checking if it can be
@@ -9454,9 +9453,11 @@ domain size is odd, the halves differ in size by at most one."
                       ;; When a noninteger with no enumerated domain, try
                       ;; potential enumerations within the range before splitting
                       (when (not (zerop (range-size variable)))
-                        (let* ((enumerations (serapeum:range lower-bound upper-bound
-                                                             (/ (range-size variable)
-                                                                *maximum-discretization-range*)))
+                        (let* ((enumerations (when (and (numberp *maximum-discretization-range*)
+                                                        (> *maximum-discretization-range* 0))
+                                               (serapeum:range lower-bound upper-bound
+                                                               (/ (range-size variable)
+                                                                  *maximum-discretization-range*))))
                                ;; Add midpoint and bounds to make sure they're not missing.
                                ;; Also convert to a list for compatibility with function
                                ;; signatures.
