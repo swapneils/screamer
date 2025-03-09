@@ -10,6 +10,15 @@ Changes in this version:
 - Enhancement: ~divide-and-conquer-force~ now checks possible
   integer values for reals not known to be non-integers, based
   on ~*maximum-discretization-range*~.
+- Enhancement: When using ~divide-and-conquer-force~ to solve for
+  a ~real~ variable which is not known to have a finite domain, we
+  now attempt to enumerate potential values.
+  - The previous behavior was to either search infinitely or fill
+    up the stack and crash the underlying Lisp implementation. This
+    occurred even if only a finite number of solutions was requested.
+  - This value enumeration includes all integers in the initial range,
+    and up to ~*maximum-discretization-range*~ + X additional values
+    for every range considered by ~divide-and-conquer-force~.
 - Minor incompatible change: Some invalid assumptions in the logic
   for variable multiplication have been removed. This may cause
   infinite search in code which previously (incorrectly) resolved

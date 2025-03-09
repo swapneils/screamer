@@ -9370,23 +9370,19 @@ value. Otherwise implements a single binary-branching step of a
 divide-and-conquer search algorithm. There are always two alternatives, the
 second of which is tried upon backtracking.
 
-If it is known to have a finite domain D then this domain is split into two
+If X is known to have a finite domain D then this domain is split into two
 halves and the value of X is nondeterministically restricted to be a member
 one of the halves. If X becomes bound by this restriction then its value is
 returned. Otherwise, X itself is returned.
 
 If X is not known to have a finite domain but is known to be real and to have
-both lower and upper bounds then nondeterministically either the lower or
-upper bound is restricted to the midpoint between the lower and upper bound.
-If X becomes bound by this restriction then its dereferenced value is
+both lower and upper bounds:
+If X could be an integer, the case where it is and isn't are both checked.
+If X is a noninteger, enumerations are nondeterministically generated and tried
+based on `*maximum-discretization-range*'. Then, nondeterministically either the
+lower or upper bound is restricted to the midpoint between the lower and upper
+bound. If X becomes bound by this restriction then its dereferenced value is
 returned. Otherwise, X itself is returned.
-
-If X is real, could possibly be an integer, and is known to have upper and
-lower bounds enclosing as many or fewer integers as
-`*maximum-discretization-range*', both the case where X is an integer and
-the case where it is not are checked. Note that unless
-`*maximum-discretization-range*' is 0, every real X with known upper and lower
-bounds will eventually check this condition.
 
 An error is signalled if X is not known to be restricted to a finite domain
 and either is not known to be real or is not known to have both a lower and
@@ -9431,39 +9427,61 @@ domain size is odd, the halves differ in size by at most one."
                          (fail)))))
                ;; `variable' is not known to be an integer but is real and
                ;; has a bounded domain
-               (let ((midpoint (/ (+ (variable-lower-bound variable)
-                                     (variable-upper-bound variable))
-                                  2)))
-                 (either (let ((old-bound (variable-upper-bound variable)))
-                           (restrict-upper-bound! variable midpoint)
-                           (if (= old-bound (variable-upper-bound variable))
-                               (fail)))
-                   (let ((old-bound (variable-lower-bound variable)))
-                     (restrict-lower-bound! variable midpoint)
-                     (if (= old-bound (variable-lower-bound variable))
-                         (fail))))
-                 ;; If the range is known to be less than
-                 ;; `*maximum-discretization-range*' and there is at
-                 ;; least one integer inside it, see if `variable' could
-                 ;; be an integer.
-                 (let ((upper-bound (variable-upper-bound variable))
-                       (lower-bound (variable-lower-bound variable)))
-                   (when (and
-                          ;; If `variable' can't be an integer,
-                          ;; don't bother checking if it can be
-                          (variable-possibly-integer? variable)
-                          (numberp upper-bound)
-                          (numberp lower-bound)
-                          (>= *maximum-discretization-range*
-                              (- upper-bound lower-bound))
-                          ;; There is at least one integer between
-                          ;; the bounds
-                          (/= (floor upper-bound) (floor lower-bound)))
-                     (either
-                       ;; Try making `variable' an integer
-                       (restrict-integer! variable)
-                       ;; Look at non-integer values of `variable'
-                       (restrict-noninteger! variable)))))))
+               (let ((upper-bound (variable-upper-bound variable))
+                     (lower-bound (variable-lower-bound variable)))
+                 (let ((midpoint (/ (+ upper-bound lower-bound) 2)))
+                   ;; Check various heuristics before deciding to bifurcate
+                   (cond
+                     ;; When the range is known to be less than
+                     ;; `*maximum-discretization-range*' and `variable' might
+                     ;; be an integer, try restricting variable to an integer
+                     ((and
+                       ;; If `variable' can't be an integer,
+                       ;; don't bother checking if it can be
+                       (variable-possibly-integer? variable)
+                       (numberp upper-bound)
+                       (numberp lower-bound)
+                       ;; There is at least one integer between
+                       ;; the bounds
+                       (/= (floor upper-bound) (floor lower-bound)))
+                      (either
+                        ;; Try making `variable' an integer
+                        (restrict-integer! variable)
+                        ;; Look at non-integer values of `variable'
+                        (restrict-noninteger! variable)))
+                     ;; No heuristics apply
+                     (t
+                      ;; When a noninteger with no enumerated domain, try
+                      ;; potential enumerations within the range before splitting
+                      (when (not (zerop (range-size variable)))
+                        (let* ((enumerations (serapeum:range lower-bound upper-bound
+                                                             (/ (range-size variable)
+                                                                *maximum-discretization-range*)))
+                               ;; Add midpoint and bounds to make sure they're not missing.
+                               ;; Also convert to a list for compatibility with function
+                               ;; signatures.
+                               (enumerations (concatenate 'list enumerations
+                                                          (list lower-bound midpoint upper-bound)))
+                               ;; Remove duplicate values
+                               (enumerations (remove-duplicates enumerations :test #'=))
+                               ;; Sort enumerations
+                               (enumerations (cl:sort enumerations #'<)))
+                          (either
+                            (restrict-value! variable
+                                             (a-member-of enumerations))
+                            ;; If none of the enumerations work, restrict to be none of them
+                            (restrict-enumerated-antidomain! variable enumerations))))
+                      ;; Bifurfacte the domain unless `variable' is `bound?'
+                      (unless (bound? variable)
+                        (either
+                          (let ((old-bound (variable-upper-bound variable)))
+                            (restrict-upper-bound! variable midpoint)
+                            (if (= old-bound (variable-upper-bound variable))
+                                (fail)))
+                          (let ((old-bound (variable-lower-bound variable)))
+                            (restrict-lower-bound! variable midpoint)
+                            (if (= old-bound (variable-lower-bound variable))
+                                (fail)))))))))))
           (t (error "It is only possible to divide and conquer force a~%~
                   variable that has a countable domain or a finite range")))))
   (value-of variable))

@@ -287,3 +287,29 @@
                                         ;fails
          (all-values (solution (list x y z) (static-ordering #'linear-force))))
        `((2/3 3/2 1) (3/2 2/3 1)))))
+
+(deftest does-not-crash-when-guessing-for-non-integer-reals ()
+  (is (= (length
+          (n-values (20)
+            (solution (a-real-betweenv 0 10)
+                      (static-ordering #'divide-and-conquer-force))))
+         20)))
+
+(deftest tries-integer-values-for-possibly-integer-reals ()
+  (let ((result (n-values (10)
+                  (solution (a-real-betweenv 1 10)
+                            (static-ordering #'divide-and-conquer-force)))))
+    (is (= (length result) 10))
+    (is (every #'integerp result))
+    (is (every (lambda (i) (<= 1 i 10)) result))))
+
+(deftest uses-bfs-for-reals-when-solution-is-not-known ()
+  (let* ((*maximum-discretization-range* 20)
+         (result (n-values (21)
+                  (solution (a-real-betweenv 0 10)
+                            (static-ordering #'divide-and-conquer-force)))))
+    (is (= (length result) 21))
+    ;; Integer values average to 5
+    (is (= (alexandria:mean (subseq result 0 11)) 5))
+    ;; Non-integer guesses also average to 5
+    (is (= (alexandria:mean (subseq result 11 21)) 5))))
