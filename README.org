@@ -43,6 +43,11 @@ See CHANGELOG.org
 - Multiple new symbols exported from the ~screamer~ package
 - ~*nondeterministic-context*~ is now a hash-table when non-NIL, rather than
   just equaling ~t~ as it previously did.
+- NOTE: Bugfixes are not specifically enumerated as backwards incompatible, but
+  there are multiple logic errors in older Screamer versions which have been
+  fixed since then. These may invalidate code depending on the incorrect assumptions,
+  but the API contract defined by documentation, docstrings, and symbol-names has not
+  been violated, and in fact is followed more accurately after these fixes.
 * Examples
 See http://nikodemus.github.io/screamer/ for some examples of the core Screamer
 functionality.
