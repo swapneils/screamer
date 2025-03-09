@@ -6228,9 +6228,29 @@ Otherwise returns the value of X."
   ;;       type system could distinguish Gaussian integers from other complex
   ;;       numbers we could make such an assertion whenever either X or Y was
   ;;       not a Gaussian integer.
-  (if (and (variable-integer? z) (or (variable-integer? x) (variable-integer? y)))
+  ;; NOTE: Classic Screamer assumed that an integer can only be multiplied to
+  ;; by two other integers. This is false, for instance 1 = 2 * 1/2.
+  ;; (if (and (variable-integer? z) (or (variable-integer? x) (variable-integer? y)))
+  ;;     (restrict-integer! x))
+  ;; NOTE: To mitigate the loss of the above, when Z and Y have explicit
+  ;; enumerated domains we check by brute force if X must be an integer
+  (if (and (variable-integer? z) (variable-integer? y)
+           ;; When both have explicit enumerated domains
+           (listp (variable-enumerated-domain z))
+           (listp (variable-enumerated-domain y))
+           ;; Check if Z/Y must be an integer
+           (let ((noninteger-possible nil))
+             (block *-rule-down-check-necessarily-integer-by-domain
+               ;; Iterate through the enumerated domains
+               (dolist (z-value (variable-enumerated-domain z))
+                 (dolist (y-value (variable-enumerated-domain y))
+                   (when (and (not (zerop y-value))
+                              (not (integerp (/ z-value y-value))))
+                     (setf noninteger-possible t)
+                     (return-from *-rule-down-check-necessarily-integer-by-domain)))))
+             (not noninteger-possible)))
       (restrict-integer! x))
-  ;; NOTE: Ditto.
+  ;; NOTE: Reals can only be produced by multiplication of reals.
   (if (and (variable-real? z) (or (variable-real? x) (variable-real? y)))
       (restrict-real! x))
   (if (and (variable-real? x) (variable-real? y) (variable-real? z))
