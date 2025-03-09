@@ -9409,9 +9409,11 @@ domain size is odd, the halves differ in size by at most one."
                 (variable-lower-bound variable)
                 (variable-upper-bound variable))
            (if (variable-integer? variable)
+               ;; Variable is known to be an integer with a bounded domain
                (let ((midpoint (floor (+ (variable-lower-bound variable)
                                          (variable-upper-bound variable))
                                       2)))
+                 ;; Bisect the domain of the integer
                  (either (let ((old-bound (variable-upper-bound variable)))
                            (restrict-upper-bound! variable midpoint)
                            (if (= old-bound (variable-upper-bound variable))
@@ -9420,6 +9422,8 @@ domain size is odd, the halves differ in size by at most one."
                      (restrict-lower-bound! variable (1+ midpoint))
                      (if (= old-bound (variable-lower-bound variable))
                          (fail)))))
+               ;; `variable' is not known to be an integer but is real and
+               ;; has a bounded domain
                (let ((midpoint (/ (+ (variable-lower-bound variable)
                                      (variable-upper-bound variable))
                                   2)))
