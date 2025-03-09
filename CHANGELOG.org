@@ -7,9 +7,6 @@ will each be tracked separately in this changelog. Feel free to
 provide feedback on this approach while we try it out!
 
 Changes in this version:
-- Enhancement: ~divide-and-conquer-force~ now checks possible
-  integer values for reals not known to be non-integers, based
-  on ~*maximum-discretization-range*~.
 - Enhancement: When using ~divide-and-conquer-force~ to solve for
   a ~real~ variable which is not known to have a finite domain, we
   now attempt to enumerate potential values.
