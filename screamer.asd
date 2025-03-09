@@ -33,7 +33,7 @@
   :description "The core Screamer functionality"
   :author "Originally Jeffrey Mark Siskind & David Allen McAllester, extended by Swapneil Singh"
   :maintainer "Swapneil Singh"
-  :version "5.1.1"
+  :version "5.2.1"
   :depends-on ("alexandria"
                "serapeum"
                "trivia"

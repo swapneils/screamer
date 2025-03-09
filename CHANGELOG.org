@@ -1,5 +1,16 @@
 #+title: Changelog
 
+* 5.2.1 (screamer/core v5.2.1)
+- Enhancement: ~divide-and-conquer-force~ now checks possible
+  integer values for reals not known to be non-integers, based
+  on ~*maximum-discretization-range*~.
+- Minor incompatible change: Some invalid assumptions in the logic
+  for variable multiplication have been removed. This may cause
+  infinite search in code which previously (incorrectly) resolved
+  to specific values.
+- Bugfix: Missing ~local~ declarations have been added to some
+  restrict-domain functions, preventing restrictions from one
+  nondeterministc path affecting the following pathways.
 * 5.2 (screamer/core v5.2)
 Reverted incompatible change to ~ITH-VALUE~, create ~KTH-VALUE~ and deprecate
 ~ITH-VALUE~
