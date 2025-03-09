@@ -9381,6 +9381,13 @@ upper bound is restricted to the midpoint between the lower and upper bound.
 If X becomes bound by this restriction then its dereferenced value is
 returned. Otherwise, X itself is returned.
 
+If X is real, could possibly be an integer, and is known to have upper and
+lower bounds enclosing as many or fewer integers as
+`*maximum-discretization-range*', both the case where X is an integer and
+the case where it is not are checked. Note that unless
+`*maximum-discretization-range*' is 0, every real X with known upper and lower
+bounds will eventually check this condition.
+
 An error is signalled if X is not known to be restricted to a finite domain
 and either is not known to be real or is not known to have both a lower and
 upper bound.
@@ -9434,7 +9441,29 @@ domain size is odd, the halves differ in size by at most one."
                    (let ((old-bound (variable-lower-bound variable)))
                      (restrict-lower-bound! variable midpoint)
                      (if (= old-bound (variable-lower-bound variable))
-                         (fail)))))))
+                         (fail))))
+                 ;; If the range is known to be less than
+                 ;; `*maximum-discretization-range*' and there is at
+                 ;; least one integer inside it, see if `variable' could
+                 ;; be an integer.
+                 (let ((upper-bound (variable-upper-bound variable))
+                       (lower-bound (variable-lower-bound variable)))
+                   (when (and
+                          ;; If `variable' can't be an integer,
+                          ;; don't bother checking if it can be
+                          (variable-possibly-integer? variable)
+                          (numberp upper-bound)
+                          (numberp lower-bound)
+                          (>= *maximum-discretization-range*
+                              (- upper-bound lower-bound))
+                          ;; There is at least one integer between
+                          ;; the bounds
+                          (/= (floor upper-bound) (floor lower-bound)))
+                     (either
+                       ;; Try making `variable' an integer
+                       (restrict-integer! variable)
+                       ;; Look at non-integer values of `variable'
+                       (restrict-noninteger! variable)))))))
           (t (error "It is only possible to divide and conquer force a~%~
                   variable that has a countable domain or a finite range")))))
   (value-of variable))
