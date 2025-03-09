@@ -6506,7 +6506,16 @@ Otherwise returns the value of X."
              (attach-noticer!
               #'(lambda () (*-rule-up x y z) (*-rule-down x z y)) y)
              (attach-noticer!
-              #'(lambda () (*-rule-up x y z) (*-rule-down x y z)) z
+              #'(lambda ()
+                  ;; NOTE: We do not know whether the quotient Z
+                  ;; will be part of the final `solution' form,
+                  ;; so we cannot unilaterally force Y to be
+                  ;; non-zero without breaking backwards-compatibility
+                  ;; with classic Screamer.
+                  ;; If Z *does* ever try to constrain Y, we can
+                  ;; add this constraint as well.
+                  (restrict-enumerated-antidomain! y '(0))
+                  (*-rule-up x y z) (*-rule-down x y z)) z
               :dependencies (list x y))
              z))))
 
