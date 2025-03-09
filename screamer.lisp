@@ -6175,11 +6175,38 @@ Otherwise returns the value of X."
   ;;       X or Y is real. If the Screamer type system could distinguish
   ;;       Gaussian integers from other complex numbers we could whenever X or
   ;;       Y was not a Gaussian integer.
-  (if (and (or (variable-noninteger? x) (variable-noninteger? y))
-           (or (variable-real? x) (variable-real? y)))
-      (restrict-noninteger! z))
+  ;;
+  ;; NOTE: Consider for instance 2/3 * 3/2. This produces an integer output.
+  ;; As such, we cannot assume that non-integers will not produce an integer,
+  ;; as classic Screamer assumed..
+  ;; (if (and (or (variable-noninteger? x) (variable-noninteger? y))
+  ;;          (or (variable-real? x) (variable-real? y)))
+  ;;     (restrict-noninteger! z))
+  ;; NOTE: To minimize the effect of removing the above assumption, we
+  ;; check if X and Y have enumerated domains, and if so check the full
+  ;; domain to see if Z is possibly an integer.
+  (when (or
+         ;; If Z has an enumerated domain which doesn't have integers
+         (and (listp (variable-enumerated-domain z))
+              (not (some #'integerp (variable-enumerated-domain z))))
+         ;; If no possible value of X*Y is an integer
+         (and (variable-real? x) (variable-real? y)
+              ;; Only check when both have explicit enumerated domains
+              (listp (variable-enumerated-domain x))
+              (listp (variable-enumerated-domain y))
+              (let ((integer-possible nil))
+                (block *-rule-up-check-noninteger-by-domain
+                  ;; Iterate through the enumerated domains
+                  (dolist (x-value (variable-enumerated-domain x))
+                    (dolist (y-value (variable-enumerated-domain y))
+                      (when (integerp (* x-value y-value))
+                        (setf integer-possible t)
+                        (return-from *-rule-up-check-noninteger-by-domain)))))
+                ;; Integer is not possible
+                (not integer-possible))))
+    (restrict-noninteger! z))
   (if (and (variable-real? x) (variable-real? y)) (restrict-real! z))
-  ;; NOTE: Ditto.
+  ;; NOTE: If either X or Y is non-real and the other is real, Z must be non-real.
   (if (and (or (variable-nonreal? x) (variable-nonreal? y))
            (or (variable-real? x) (variable-real? y)))
       (restrict-nonreal! z))

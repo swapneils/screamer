@@ -253,3 +253,16 @@
            (9 1 9) (9 2 9/2) (9 3 3) (9 4 9/4) (9 5 9/5) (9 6 3/2) (9 7 9/7) (9 8 9/8)
            (9 9 1) (9 10 9/10) (10 1 10) (10 2 5) (10 3 10/3) (10 4 5/2) (10 5 2)
            (10 6 5/3) (10 7 10/7) (10 8 5/4) (10 9 10/9) (10 10 1)))))
+
+(deftest test-does-not-disallow-gaussian-integers-from-noninteger-multiplication ()
+  (is (equal
+       (let* ((x (a-member-ofv '(2/3 3/2) "x"))
+              (y (a-member-ofv '(2/3 3/2) "y"))
+              (z (*v x y)))
+                                        ; (print z)
+                                        ; (print (screamer::variable-possibly-integer? z))
+         (assert! (integerpv z))
+                                        ; (print z)
+                                        ;fails
+         (all-values (solution (list x y z) (static-ordering #'linear-force))))
+       `((2/3 3/2 1) (3/2 2/3 1)))))
