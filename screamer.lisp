@@ -6184,21 +6184,36 @@ Otherwise returns the value of X."
   ;;     (restrict-noninteger! z))
   ;; NOTE: To minimize the effect of removing the above assumption, we
   ;; check if X and Y have enumerated domains, and if so check the full
-  ;; domain to see if Z is possibly an integer.
+  ;; domain to see if Z is a non-integer.
+  ;; TODO: Tracking rationals explicitly as a superset of integers
+  ;; would resolve this case much more simply
   (when (or
          ;; If Z has an enumerated domain which doesn't have integers
          (and (listp (variable-enumerated-domain z))
               (not (some #'integerp (variable-enumerated-domain z))))
-         ;; If no possible value of X*Y is an integer
+         ;; Check if X*Y must be a non-integer real
          (and (variable-real? x) (variable-real? y)
+              ;; No point checking unless we already know Z could be
+              ;; a non-integer real
+              (variable-possibly-noninteger-real? z)
+              ;; No point checking if we already know Z is a
+              ;; non-integer
+              (not (variable-noninteger? z))
               ;; Only check when both have explicit enumerated domains
               (listp (variable-enumerated-domain x))
               (listp (variable-enumerated-domain y))
-              (let ((integer-possible nil))
+              ;; Check if X*Y must not be an integer
+              (let ((integer-possible nil)
+                    ;; Remove non-rationals since they can't resolve to integers
+                    ;; NOTE: If Screamer could track Gaussian integers, this
+                    ;; would be an invalid optimization, as e.g. floats could
+                    ;; also produce Gaussian integers
+                    (x-dom (remove-if-not #'rationalp (variable-enumerated-domain x)))
+                    (y-dom (remove-if-not #'rationalp (variable-enumerated-domain y))))
                 (block *-rule-up-check-noninteger-by-domain
                   ;; Iterate through the enumerated domains
-                  (dolist (x-value (variable-enumerated-domain x))
-                    (dolist (y-value (variable-enumerated-domain y))
+                  (dolist (x-value x-dom)
+                    (dolist (y-value y-dom)
                       (when (integerp (* x-value y-value))
                         (setf integer-possible t)
                         (return-from *-rule-up-check-noninteger-by-domain)))))
@@ -6260,23 +6275,34 @@ Otherwise returns the value of X."
   ;; (if (and (variable-integer? z) (or (variable-integer? x) (variable-integer? y)))
   ;;     (restrict-integer! x))
   ;; NOTE: To mitigate the loss of the above, when Z and Y have explicit
-  ;; enumerated domains we check by brute force if X must be an integer
-  (if (and (variable-integer? z) (variable-integer? y)
-           ;; When both have explicit enumerated domains
-           (listp (variable-enumerated-domain z))
-           (listp (variable-enumerated-domain y))
-           ;; Check if Z/Y must be an integer
-           (let ((noninteger-possible nil))
-             (block *-rule-down-check-necessarily-integer-by-domain
-               ;; Iterate through the enumerated domains
-               (dolist (z-value (variable-enumerated-domain z))
-                 (dolist (y-value (variable-enumerated-domain y))
-                   (when (and (not (zerop y-value))
-                              (not (integerp (/ z-value y-value))))
-                     (setf noninteger-possible t)
-                     (return-from *-rule-down-check-necessarily-integer-by-domain)))))
-             (not noninteger-possible)))
-      (restrict-integer! x))
+  ;; enumerated domains we brute force whether X must be an integer
+  ;; TODO: Tracking rationals explicitly as a superset of integers
+  ;; would resolve this case much more simply
+  (when (and (variable-real? z) (variable-real? y)
+             ;; No point checking if we already know it's not an integer
+             (variable-possibly-integer? x)
+             ;; No point checking if we know for sure X is an integer
+             (not (variable-integer? x))
+             ;; When both have explicit enumerated domains
+             (listp (variable-enumerated-domain z))
+             (listp (variable-enumerated-domain y))
+             ;; Check if Z/Y must be an integer
+             (let ((noninteger-possible nil)
+                   ;; Remove non-rationals since they can't resolve to integers
+                   ;; NOTE: If Screamer could track Gaussian integers, this
+                   ;; would be an invalid optimization, as e.g. floats could
+                   ;; also produce Gaussian integers
+                   (z-dom (remove-if-not #'rationalp (variable-enumerated-domain z)))
+                   (y-dom (remove-if-not #'rationalp (variable-enumerated-domain y))))
+               (block *-rule-down-check-necessarily-integer-by-domain
+                 ;; Iterate through the enumerated domains
+                 (dolist (z-value z-dom)
+                   (dolist (y-value y-dom)
+                     (unless (or (zerop y-value) (integerp (/ z-value y-value)))
+                       (setf noninteger-possible t)
+                       (return-from *-rule-down-check-necessarily-integer-by-domain)))))
+               (not noninteger-possible)))
+    (restrict-integer! x))
   ;; NOTE: Reals can only be produced by multiplication of reals.
   (if (and (variable-real? z) (or (variable-real? x) (variable-real? y)))
       (restrict-real! x))
