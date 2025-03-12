@@ -17,7 +17,7 @@ Changes in this version:
     and up to ~*maximum-discretization-range*~ + X additional values
     for every range considered by ~divide-and-conquer-force~.
 - Minor incompatible change: Some invalid assumptions in the logic
-  for variable multiplication have been removed. This may cause
+  for variable arithmetic have been removed. This may cause
   infinite search in code which previously (incorrectly) resolved
   to specific values. Thanks to @PHRaposo for [[https://github.com/swapneils/screamer/issues/10][the report]].
 - Bugfix: Missing ~local~ declarations have been added to some

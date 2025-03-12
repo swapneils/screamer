@@ -6044,11 +6044,60 @@ Otherwise returns the value of X."
   ;;       X or Y is real. If the Screamer type system could distinguish
   ;;       Gaussian integers from other complex numbers we could whenever X or
   ;;       Y was not a Gaussian integer.
-  (when (and (or (variable-noninteger? x) (variable-noninteger? y))
-             (or (variable-real? x) (variable-real? y)))
+  ;; NOTE: Classic Screamer assumed that an integer can only be added to
+  ;; by two other integers. This is false, for instance 1 = 1/3 + 2/3.
+  ;; (when (and (or (variable-noninteger? x) (variable-noninteger? y))
+  ;;            (or (variable-real? x) (variable-real? y)))
+  ;;   (restrict-noninteger! z))
+  ;; NOTE: To mitigate the loss of the above, we check if one of X and Y are
+  ;; integers and the other isn't. In this case, the other must be a non-integer
+  ;; rational (in which case Z is a non-integer rational) or a non-rational real
+  ;; (e.g. floats) (in which case Z cannot be an integer or rational)
+  (when (and (alexandria:xor (variable-noninteger? x) (variable-noninteger? y))
+             ;; We assume both are reals. This should be guaranteed
+             ;; by the callers, but it's good and cheap to verify
+             (variable-real? x) (variable-real? y)
+             (or (variable-integer? x) (variable-integer? y)))
+    (restrict-noninteger! z))
+  ;; NOTE: To mitigate the loss of the above, when X and Y have explicit
+  ;; enumerated domains we brute force whether Z must be a non-integer
+  ;; TODO: Tracking rationals explicitly as a superset of integers
+  ;; would resolve this case much more simply
+  (when (or
+         ;; If Z has an enumerated domain which doesn't have integers
+         (and (listp (variable-enumerated-domain z))
+              (not (some #'integerp (variable-enumerated-domain z))))
+         ;; Check if X+Y must be a non-integer real
+         (and (variable-real? x) (variable-real? y)
+              ;; No point checking unless we already know Z could be
+              ;; a non-integer real
+              (variable-possibly-noninteger-real? z)
+              ;; No point checking if we already know Z is a
+              ;; non-integer
+              (not (variable-noninteger? z))
+              ;; Only check when both have explicit enumerated domains
+              (listp (variable-enumerated-domain x))
+              (listp (variable-enumerated-domain y))
+              ;; Check if X+Y must not be an integer
+              (let ((integer-possible nil)
+                    ;; Remove non-rationals since they can't resolve to integers
+                    ;; NOTE: If Screamer could track Gaussian integers, this
+                    ;; would be an invalid optimization, as e.g. floats could
+                    ;; also produce Gaussian integers
+                    (x-dom (remove-if-not #'rationalp (variable-enumerated-domain x)))
+                    (y-dom (remove-if-not #'rationalp (variable-enumerated-domain y))))
+                (block +-rule-up-check-noninteger-by-domain
+                  ;; Iterate through the enumerated domains
+                  (dolist (x-value x-dom)
+                    (dolist (y-value y-dom)
+                      (when (integerp (+ x-value y-value))
+                        (setf integer-possible t)
+                        (return-from +-rule-up-check-noninteger-by-domain)))))
+                ;; Integer is not possible
+                (not integer-possible))))
     (restrict-noninteger! z))
   (when (and (variable-real? x) (variable-real? y)) (restrict-real! z))
-  ;; NOTE: Ditto.
+  ;; NOTE: Reals can only be produced by addition of reals
   (when (and (or (variable-nonreal? x) (variable-nonreal? y))
              (or (variable-real? x) (variable-real? y)))
     (restrict-nonreal! z))
@@ -6082,7 +6131,7 @@ Otherwise returns the value of X."
   ;;       not a Gaussian integer.
   (when (and (variable-integer? z) (or (variable-integer? x) (variable-integer? y)))
     (restrict-integer! x))
-  ;; NOTE: Ditto.
+  ;; NOTE: Reals can only be produced by addition of reals
   (when (and (variable-real? z) (or (variable-real? x) (variable-real? y)))
     (restrict-real! x))
   (when (and (variable-real? x) (variable-real? y) (variable-real? z))
