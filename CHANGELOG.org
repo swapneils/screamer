@@ -24,6 +24,9 @@ Changes in this version:
   restrict-domain functions, preventing restrictions from one
   nondeterministc path affecting the following pathways. Thanks
   to @PHRaposo for [[https://github.com/swapneils/screamer/issues/10][the report]].
+- Bugfix: When ~restrict-bounds!~ constrains the range/domain of a
+  variable to 0/1, the enumerated domain is updated along with the
+  variable value.
 * 5.2 (screamer/core v5.2)
 Reverted incompatible change to ~ITH-VALUE~, create ~KTH-VALUE~ and deprecate
 ~ITH-VALUE~

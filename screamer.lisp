@@ -5608,10 +5608,20 @@ Otherwise returns the value of X."
                 (lower (variable-lower-bound x)))
             (when (or (and (numberp domain) (= domain 1))
                       (and (numberp range) (roughly-= range 0)))
-              (local (setf (variable-value x)
-                     (cond ((listp enumerated) (first enumerated))
-                           (lower lower)
-                           (t (variable-value x)))))))
+              (restrict-value! x (cond
+                                   ;; No action if X already has a known numerical value
+                                   ((numberp (variable-value x)) (variable-value x))
+                                   ;; Use enumerated domain if it only has one element
+                                   ((and (listp enumerated)
+                                         ;; Enumerated domain has exactly one element
+                                         enumerated (null (rest enumerated)))
+                                    (first enumerated))
+                                   ;; Bounds are equivalent
+                                   ((= lower (variable-upper-bound x)) lower)
+                                   ;; Should never happen, but just in case
+                                   (t
+                                    (warn "restrict-bounds! bug: ~A has a single-value domain that cannot be resolved!" x)
+                                    (variable-value x))))))
           (run-noticers x)))))
 
 (defun prune-enumerated-domain (x &optional (enumerated-domain (variable-enumerated-domain x)))
