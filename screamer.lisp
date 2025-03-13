@@ -9546,6 +9546,7 @@ domain size is odd, the halves differ in size by at most one."
                                ;; Add midpoint and bounds to make sure they're not missing.
                                ;; Also convert to a list for compatibility with function
                                ;; signatures.
+                               ;; NOTE: If enumerations is empty then this just checks the bounds
                                (enumerations (concatenate 'list enumerations
                                                           (list lower-bound midpoint upper-bound)))
                                ;; Remove duplicate values
