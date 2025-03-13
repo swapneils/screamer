@@ -1,5 +1,8 @@
 -*- mode: text; mode: auto-fill; fill-column: 78 -*-
 
+NOTICE: Screamer has moved to https://github.com/swapneils/screamer
+
+
 Screamer is an extension of Common Lisp that adds support for nondeterministic
 programming. Screamer consists of two levels. The basic nondeterministic level
 adds support for backtracking and undoable side effects. On top of this
