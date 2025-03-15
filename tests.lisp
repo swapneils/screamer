@@ -274,32 +274,29 @@
     (is (= (length result) 13))))
 
 (deftest does-not-incorrectly-disqualify-sums-from-being-integers ()
-  (are
-   (= 4
-      (length
-       (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-              (y (a-real-betweenv 0 1))
-              (z (+v x y)))
-         (assert! (integerpv z))
-         (all-values (solution (list x y z) (static-ordering #'linear-force))))))
-   (= 4
-      (length
-       (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-              (y (a-real-betweenv 0 1))
-              (z (+v x y)))
-         (assert! (=v (an-integerv) z))
-         (all-values (solution (list x y z) (static-ordering #'linear-force))))))
-   (= 4
-      (length
-       (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-              (y (a-real-betweenv 0 1))
-              (z (+v x y)))
-         (assert! (=v 1 z))
-         (all-values (solution (list x y z) (static-ordering #'linear-force))))))
-   (= 4
-      (length
-       (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-              (y (a-real-betweenv 0 1))
-              (z (+v x y)))
-         (assert! (=v 1.0 z))
-         (all-values (solution (list x y z) (static-ordering #'linear-force))))))))
+  (labels ((recursive-= (&rest ls)
+             (cond ((every #'numberp ls) (apply #'= ls))
+                   ((some #'numberp ls) nil)
+                   ((every #'listp ls)
+                    (every #'identity (apply #'mapcar #'recursive-= ls))))))
+    (is (recursive-=
+         (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
+                (y (a-real-betweenv 0 1))
+                (z (+v x y)))
+           (assert! (integerpv z))
+           (all-values (solution (list x y z) (static-ordering #'linear-force))))
+         (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
+                (y (a-real-betweenv 0 1))
+                (z (+v x y)))
+           (assert! (=v (an-integerv) z))
+           (all-values (solution (list x y z) (static-ordering #'linear-force))))
+         (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
+                (y (a-real-betweenv 0 1))
+                (z (+v x y)))
+           (assert! (=v 1 z))
+           (all-values (solution (list x y z) (static-ordering #'linear-force))))
+         (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
+                (y (a-real-betweenv 0 1))
+                (z (+v x y)))
+           (assert! (=v 1.0 z))
+           (all-values (solution (list x y z) (static-ordering #'linear-force))))))))
