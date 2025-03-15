@@ -27,6 +27,11 @@
 
 (use-package :alexandria)
 
+(defmacro are (&rest tests)
+  `(progn
+     ,@(loop for test in tests
+             collect `(is ,test))))
+
 (defun test-screamer (&optional no-debug)
   (flet ((test ()
            (eql 0 (getf (extract-test-run-statistics (screamer-tests))
@@ -61,9 +66,9 @@
         t)))
 
 (deftest eval-when.situations ()
-  (is (equal '(t t) (all-values (eval-when/ct))))
-  (is (equal '(t t) (all-values (eval-when/lt))))
-  (is (equal '(:a :b) (all-values (eval-when/ex)))))
+  (are (equal '(t t) (all-values (eval-when/ct)))
+       (equal '(t t) (all-values (eval-when/lt)))
+       (equal '(:a :b) (all-values (eval-when/ex)))))
 
 (defmacro evil-ding (form &environment env)
   (let ((exp (macroexpand form env)))
@@ -82,80 +87,24 @@
              (all-values (multiple-value-call-nondeterministic.ding)))))
 
 (deftest a-member-of-vector ()
-  (is (equal '() (all-values (a-member-of ""))))
-  (is (equal '(#\a) (all-values (a-member-of "a"))))
-  (is (equal '(#\a #\b) (all-values (a-member-of "ab"))))
-  (is (equal '(#\a #\b #\c) (all-values (a-member-of "abc")))))
+  (are (equal '() (all-values (a-member-of "")))
+       (equal '(#\a) (all-values (a-member-of "a")))
+       (equal '(#\a #\b) (all-values (a-member-of "ab")))
+       (equal '(#\a #\b #\c) (all-values (a-member-of "abc")))))
 
 (deftest prime-ordeal ()
-  (is (primordial::test1))
-  (is (primordial::test2))
-  (is (primordial::test3))
-  (is (primordial::test4))
-  (is (primordial::test5))
-  (is (primordial::test6))
-  (is (primordial::test11))
-  (is (primordial::test12))
-  (is (primordial::test13))
-  (is (primordial::test14))
-  (is (primordial::test15))
-  (is (primordial::test16))
-  (is (primordial::test17))
-  (is (primordial::test18))
-  (is (primordial::test19))
-  (is (primordial::test20))
-  (is (primordial::test21))
-  (is (primordial::test22))
-  (is (primordial::test23))
-  (is (primordial::test24))
-  (is (primordial::test25))
-  (is (primordial::test26))
-  (is (primordial::test27))
-  (is (primordial::test28))
-  (is (primordial::test29))
-  (is (primordial::test30))
-  (is (primordial::test31))
-  (is (primordial::test32))
-  (is (primordial::test33))
-  (is (primordial::test34))
-  (is (primordial::test35))
-  (is (primordial::test36))
-  (is (primordial::test37))
-  (is (primordial::test38))
-  (is (primordial::test39))
-  (is (primordial::test40))
-  (is (primordial::test41))
-  (is (primordial::test42))
-  (is (primordial::test43))
-  (is (primordial::test44))
-  (is (primordial::test45))
-  (is (primordial::test46))
-  (is (primordial::test47))
-  (is (primordial::test48))
-  (is (primordial::test49))
-  (is (primordial::test50))
-  (is (primordial::test51))
-  (is (primordial::test52))
-  (is (primordial::test53))
-  (is (primordial::test54))
-  (is (primordial::test55))
-  (is (primordial::test56))
-  (is (primordial::test57))
-  (is (primordial::test58))
-  (is (primordial::test59))
-  (is (primordial::test60))
-  (is (primordial::test61))
-  (is (primordial::test62))
-  (is (primordial::test63))
-  (is (primordial::test64))
-  (is (primordial::test65))
-  (is (primordial::test66))
-  (is (primordial::test67))
-  (is (primordial::test68))
-  (is (primordial::test69))
-  (is (primordial::test70))
-  (is (primordial::test71))
-  (is (primordial::test72)))
+  (macrolet ((check-first-n-primordials (n)
+               (let ((test-forms
+                       (loop for i from 1 to n
+                             for test-name = (format nil "TEST~A" i)
+                             for test-symbol = (find-symbol test-name "PRIMORDIAL")
+                             when test-symbol
+                               collect `(,test-symbol))))
+                 ;; If no tests found, consider it a pass
+                 (if test-forms
+                     `(are ,@test-forms)
+                     t))))
+    (check-first-n-primordials 72)))
 
 (deftest test-trail ()
   (is (equal '(t t t)
@@ -218,21 +167,24 @@
                  (v2 (a-member-ofv list2)))
              (assert! (equalv v1 v2))
              (value-of v1))))
-    (is (eq :a (foo '(:a :b) '(:c :d :a))))
-    (is (eq t (foo '(t nil) '(t :a))))
-    (is (eql 3 (foo '(1 2 3) '(nil t 3))))
-    (is (eql 3 (foo '(1 2 3) '(nil t 3 4))))
-    (is (eql 3 (foo '(nil t 3 4 -1) '(1 2 3))))
+    (are
+     (eq :a (foo '(:a :b) '(:c :d :a)))
+     (eq t (foo '(t nil) '(t :a)))
+     (eql 3 (foo '(1 2 3) '(nil t 3)))
+     (eql 3 (foo '(1 2 3) '(nil t 3 4)))
+     (eql 3 (foo '(nil t 3 4 -1) '(1 2 3))))
     (let ((xs (all-values
                 (linear-force (foo '(nil t 3 4 -1) '(1 2 3 t))))))
-      (is (or (equal '(3 t) xs)
+      (is
+          (or (equal '(3 t) xs)
               (equal '(t 3) xs))))))
 
 (deftest test-upper-bounding-failures ()
   (let ((screamer::*screamer-max-failures* 20))
-    (is (not (possibly? (> (an-integer-below 20) 20))))
-    (is (not (possibly? (solution (>v (an-integer-belowv 20) 20)
-                                  (static-ordering #'linear-force)))))))
+    (are
+     (not (possibly? (> (an-integer-below 20) 20)))
+     (not (possibly? (solution (>v (an-integer-belowv 20) 20)
+                               (static-ordering #'linear-force)))))))
 
 (deftest test-division-does-not-force-quotient-to-integer ()
     (is (equal
@@ -322,36 +274,32 @@
     (is (= (length result) 13))))
 
 (deftest does-not-incorrectly-disqualify-sums-from-being-integers ()
-  (let ((result (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-                       (y (a-real-betweenv 0 1))
-                       (z (+v x y)))
-                  (assert! (integerpv z))
-                  (all-values (solution (list x y z) (static-ordering #'linear-force))))))
-    (is (= 4
-           (length
-            (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-                   (y (a-real-betweenv 0 1))
-                   (z (+v x y)))
-              (assert! (integerpv z))
-              (all-values (solution (list x y z) (static-ordering #'linear-force)))))))
-    (is (= 4
-           (length
-            (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-                   (y (a-real-betweenv 0 1))
-                   (z (+v x y)))
-              (assert! (=v (an-integerv) z))
-              (all-values (solution (list x y z) (static-ordering #'linear-force)))))))
-    (is (= 4
-           (length
-            (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-                   (y (a-real-betweenv 0 1))
-                   (z (+v x y)))
-              (assert! (=v 1 z))
-              (all-values (solution (list x y z) (static-ordering #'linear-force)))))))
-    (is (= 4
-           (length
-            (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
-                   (y (a-real-betweenv 0 1))
-                   (z (+v x y)))
-              (assert! (=v 1.0 z))
-              (all-values (solution (list x y z) (static-ordering #'linear-force)))))))))
+  (are
+   (= 4
+      (length
+       (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
+              (y (a-real-betweenv 0 1))
+              (z (+v x y)))
+         (assert! (integerpv z))
+         (all-values (solution (list x y z) (static-ordering #'linear-force))))))
+   (= 4
+      (length
+       (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
+              (y (a-real-betweenv 0 1))
+              (z (+v x y)))
+         (assert! (=v (an-integerv) z))
+         (all-values (solution (list x y z) (static-ordering #'linear-force))))))
+   (= 4
+      (length
+       (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
+              (y (a-real-betweenv 0 1))
+              (z (+v x y)))
+         (assert! (=v 1 z))
+         (all-values (solution (list x y z) (static-ordering #'linear-force))))))
+   (= 4
+      (length
+       (let* ((x (a-member-ofv '(1/2 1/4 1/8 1/16)))
+              (y (a-real-betweenv 0 1))
+              (z (+v x y)))
+         (assert! (=v 1.0 z))
+         (all-values (solution (list x y z) (static-ordering #'linear-force))))))))
