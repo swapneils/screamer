@@ -66,6 +66,19 @@
   :depends-on ("screamer/core"
                "screamer/prob"))
 
+(defsystem :screamer/parallel
+  :serial t
+  :licence "MIT"
+  :description "Parallel Screamer features"
+  :author "Swapneil Singh"
+  :maintainer "Swapneil Singh"
+  :version "0.0.1"
+  :depends-on ("screamer"
+               "lparallel")
+  :components
+  ((:file "parallel-package")
+   (:file "screamer-parallel")))
+
 (defsystem :screamer/experimental
   :serial t
   :licence "MIT"
@@ -74,6 +87,6 @@
   :maintainer "Swapneil Singh"
   :version "0.0.1"
   :depends-on ("screamer"
-               "lparallel")
+               "screamer/parallel")
   :components
   ((:file "screamer-experimental")))

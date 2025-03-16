@@ -1,5 +1,7 @@
 #+title: Changelog
 
+* screamer/parallel 0.0.1
+Break out parallelism constructs into their own separate system.
 * screamer/core v5.2.1
 We are trying out not tracking overall version numbers unless a
 major or cross-module change was made. Instead changes to modules

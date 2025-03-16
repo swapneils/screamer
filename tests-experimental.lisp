@@ -1,3 +1,9 @@
+(in-package :screamer-user)
+
+(define-screamer-package :screamer-tests
+  (:use :cl :hu.dwim.stefil :screamer-parallel)
+  (:export #:test-screamer #:screamer-tests))
+
 (in-package :screamer-tests)
 
 (in-suite screamer-tests)

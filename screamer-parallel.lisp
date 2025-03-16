@@ -1,107 +1,9 @@
-(in-package :screamer)
+(in-package :screamer-parallel)
+(import '(serapeum:count-cpus))
 
-;;; TODO: Make the option to continue the continuation more ergonomic?
-;;; Maybe make a separate helper which acts identically save for
-;;; calling the continuation by default?
-;;; FIXME: For forms like `one-value' and `n-values' that use a
-;;; `tagbody' under the hood, invoking the `go' form (which is inevitable
-;;; if you continue the continuation) leads to an error. This makes
-;;; `call/cc' incompatible with such forms.
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declare-nondeterministic 'call/cc))
-(cl:defun call/cc (f)
-  "EXPERIMENTAL
-Call function F with the current continuation as input. Whether
-execution of the continuation continues depends on the behavior of F.
-
-F is assumed to be either a CL function or a deterministic Screamer
-function.
-NOTE: Is this assumption necessary? Can we make nondeterministic `call/cc's?
-
-F is a single-argument function which is provided a function
-(call it `cc' for convenience) which represents the current
-continuation in the nondeterministic context.
-
-`cc' is a 1-argument function which takes in a value, representing
-the return value of a form. It then continues execution from the
-current point of the nondeterministic context using that return
-value.
-
-If F does not call `cc', the current nondeterministic path is abandoned,
-backtracking to the previous choice-point.
-
-Calling `cc' results in continuing the saved nondeterministic path. If
-done from within F itself, this will continue the current nondeterministic
-context.
-`cc' can be called from outside F, even outside nondeterministic context.
-In this case it will continue its nondeterministic execution, but *will
-not backtrack to choice points before the continuation was captured!!!*
-
-Forms which populate the `*screamer-results*' form will do so globally
-in the called continuation, unless the call is wrapped in a lexical
-closure that closes over this variable (in which case Common Lisp's
-standard behavior for dynamic bindings takes precedence).
-
-`call/cc' does not currently work in `one-value' forms.
-
-Example code:
-(let* (cc-list
-       (f (lambda (cc-internal)
-            (push cc-internal cc-list)
-            (print \"calling\")
-            (print cc-list)
-            (funcall cc-internal nil))))
-  (print
-   (all-values
-     (print \"start\")
-     (let ((x (either 1 2 3)))
-       (print \"choice\")
-       (print (call/cc f))
-       (print \"called\")
-       (print x))))
-  (print \"exit\")
-  (let (*screamer-results*)
-    (mapcar (lambda (cc) (funcall cc nil)) cc-list)
-    (print *screamer-results*)))"
-  (declare (ignorable f))
-  (screamer-error
-   "CALL/CC is a nondeterministic function. As such, it must be called only~%~
-   from a nondeterministic context."))
-(cl:defun call/cc-nondeterministic (continuation f)
-  (declare (function continuation))
-  ;; NOTE: Not declaring F a function in case it's something else
-  ;; that's funcallable
-  (let* ((stored-prob (current-probability))
-         (cont (lambda (inp)
-                 ;; Fix nondeterministic result accumulation by setting
-                 ;; `*last-value-cons*' so we don't crash if
-                 ;; `*screamer-results*' is non-`nil' before the result-
-                 ;; accumulator the continuation comes from (assuming it is
-                 ;; from one).
-                 ;; TODO: Figure out if this can be done more elegantly
-                 ;; than by making a new internal special variable
-                 ;; just to track the ending of `*screamer-results*'
-                 (let ((*last-value-cons* (last *screamer-results*)))
-                   ;; Create a choice point and restore the
-                   ;; probability value from the stored execution
-                   ;; FIXME: Not sure why this wrapping `choice-point'
-                   ;; is needed, but without it the probability
-                   ;; doesn't get set properly
-                   (choice-point
-                    (factor-prob-nondeterministic
-                     ;; Ignore the output of `factor-prob' and
-                     ;; continue the continuation
-                     (lambda (x)
-                       (declare (ignore x))
-                       (funcall continuation inp))
-                     ;; Figure out what factor needs to be
-                     ;; applied to reach `stored-prob' from
-                     ;; the current probability
-                     (/ stored-prob (current-probability))))))))
-    (funcall f cont)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (declare-nondeterministic 'p-a-member-of))
+  (screamer::declare-nondeterministic 'p-a-member-of))
 
 ;;; TODO: Add a `when-succeeding' form that allows you
 ;;; to take additional actions when a collection form
@@ -153,7 +55,7 @@ This is due to the underlying threading implementation (`lparallel'); please
 defer to `lparallel' and `bordeaux-threads' for the behavior of thread
 variables."
   (declare (ignore sequence ordered))
-  (screamer-error
+  (screamer::screamer-error
    "P-A-MEMBER-OF is a nondeterministic function. As such, it must be called~%~
    only from a nondeterministic context."))
 
@@ -193,7 +95,7 @@ variables."
           ;; once the top-level has succeeded
           ;; (*screamer-max-failures* *screamer-max-failures*)
           ;; Bind max failures lexically to copy into future
-          (max-failures *screamer-max-failures*))
+          (max-failures screamer::*screamer-max-failures*))
      (declare (dynamic-extent futures context)
               (dynamic-extent q escapes)
               (type (or null (integer 0)) max-results)
@@ -212,16 +114,16 @@ variables."
                  (let* (
                         ;; Copy `*pure-cache*' in case the implementation
                         ;; doesn't use thread-safe hash-tables
-                        (*pure-cache*
-                          (when *pure-cache* (copy-tree *pure-cache*)))
+                        (screamer::*pure-cache*
+                          (when screamer::*pure-cache* (copy-tree screamer::*pure-cache*)))
                         ;; Copy trail to avoid mangling between threads
-                        (*trail* (copy-array *trail*))
+                        (screamer::*trail* (copy-array screamer::*trail*))
                         ;; Copy value-collection objects
-                        (*screamer-results* nil)
-                        (*last-value-cons* nil)
-                        (*screamer-max-failures* max-failures)
+                        (screamer::*screamer-results* nil)
+                        (screamer::*last-value-cons* nil)
+                        (screamer::*screamer-max-failures* max-failures)
                         (escaped t)
-                        (*nondeterministic-context* (serapeum:dict))
+                        (screamer::*nondeterministic-context* (serapeum:dict))
                         ;; Trackers for incrementally publishing
                         ;; collected `*screamer-results*'
                         accumulator-config-tracker
@@ -230,40 +132,40 @@ variables."
                                             accumulator-config-tracker
                                             last-screamer-results-size)
                             (boolean escaped)
-                            (vector *trail*)
+                            (vector screamer::*trail*)
                             (type (integer 0) last-screamer-results-size)
-                            (list *screamer-results* *last-value-cons* *pure-cache*))
+                            (list screamer::*screamer-results* screamer::*last-value-cons* screamer::*pure-cache*))
                    ;; Copy over the nondeterministic context
                    (when context
                      (maphash (lambda (k v)
                                 (typecase v
-                                  (list (setf (gethash k *nondeterministic-context*) (copy-tree v)))
-                                  (t (setf (gethash k *nondeterministic-context*) v))))
+                                  (list (setf (gethash k screamer::*nondeterministic-context*) (copy-tree v)))
+                                  (t (setf (gethash k screamer::*nondeterministic-context*) v))))
                               context))
                    ;; Track the starting `:screamer-accumulation-strategy'
                    ;; so we know if we're inside a nested accumulator
-                   (setf accumulator-config-tracker (gethash :screamer-accumulation-strategy *nondeterministic-context*))
+                   (setf accumulator-config-tracker (gethash :screamer-accumulation-strategy screamer::*nondeterministic-context*))
 
                    (when-failing ((unless (lparallel.queue:queue-empty-p escapes)
                                     ;; Return the results with the escape in case
                                     ;; some inner form needs them
-                                    (escape *screamer-results*))
+                                    (screamer::escape screamer::*screamer-results*))
 
                                    ;; Only publish incrementally when unordered and
                                    ;; in the same Screamer accumulation context as
                                    ;; this thread started with
                                    (when (and (not ordered)
                                               (eql accumulator-config-tracker
-                                                   (gethash :screamer-accumulation-strategy *nondeterministic-context*)))
+                                                   (gethash :screamer-accumulation-strategy screamer::*nondeterministic-context*)))
                                      ;; When new values have been added
-                                     (when (> (length *screamer-results*) last-screamer-results-size)
+                                     (when (> (length screamer::*screamer-results*) last-screamer-results-size)
                                        ;; Push the new values to the queue
-                                       (dolist (result (subseq *screamer-results* last-screamer-results-size))
+                                       (dolist (result (subseq screamer::*screamer-results* last-screamer-results-size))
                                          (lparallel.queue:push-queue result q))
                                        ;; Update the result-count tracker
-                                       (setf last-screamer-results-size (length *screamer-results*)))))
-                     (catch '%escape
-                       (choice-point (funcall continuation el))
+                                       (setf last-screamer-results-size (length screamer::*screamer-results*)))))
+                     (catch 'screamer::%escape
+                       (screamer::choice-point (funcall continuation el))
                        (setf escaped nil)))
                    ;; Mark the escape
                    (when (and escaped
@@ -272,18 +174,18 @@ variables."
                               ;; they use `%escape' to exit once they have
                               ;; enough results.
                               (or (not max-results)
-                                  (> (length *screamer-results*) max-results)))
+                                  (> (length screamer::*screamer-results*) max-results)))
                      (lparallel.queue:push-queue 1 escapes))
-                   ;; (print (list "escaped-thread" *screamer-results*))
+                   ;; (print (list "escaped-thread" screamer::*screamer-results*))
 
                    ;; Add to the unordered-result queue any values that weren't
                    ;; added in `when-failing' for whatever reason
                    (unless ordered
-                     (dolist (result (subseq *screamer-results* last-screamer-results-size))
+                     (dolist (result (subseq screamer::*screamer-results* last-screamer-results-size))
                        (lparallel.queue:push-queue result q)))
 
                    ;; Return screamer-results for when we're returning answers in order
-                   *screamer-results*)))
+                   screamer::*screamer-results*)))
              futures))
           ;; Sort futures since they were pushed in reverse order
           (serapeum:callf #'nreverse futures)
@@ -300,10 +202,10 @@ variables."
                    ;; NOTE: We return the result list, since some forms
                    ;; use `%escape' to return results while others
                    ;; ignore the returned value.
-                   (escape *screamer-results*)))
+                   (screamer::escape screamer::*screamer-results*)))
                (check-max-results ()
-                 (when (and max-results (> (length *screamer-results*) max-results))
-                   (serapeum:callf #'subseq *screamer-results* 0 max-results)
+                 (when (and max-results (> (length screamer::*screamer-results*) max-results))
+                   (serapeum:callf #'subseq screamer::*screamer-results* 0 max-results)
                    (lparallel.queue:push-queue 1 escapes))))
             (declare (inline maybe-propagate-escapes check-max-results))
             (cond
@@ -314,13 +216,13 @@ variables."
 
                  ;; Force the future and collect its results
                  (iter:for result = (lparallel:force f))
-                 (appendf *screamer-results* result)
+                 (appendf screamer::*screamer-results* result)
 
                  ;; When max result count is reached, discard extra values and decide to escape
                  (check-max-results)
 
                  ;; Update `*last-value-cons*' for bookkeeping reasons
-                 (setf *last-value-cons* (last *screamer-results*))
+                 (setf screamer::*last-value-cons* (last screamer::*screamer-results*))
 
                  ;; Propagate escapes
                  (maybe-propagate-escapes)))
@@ -335,13 +237,13 @@ variables."
                  ;; Wait for queue to not be empty, then get values from it
                  (when (not (lparallel.queue:queue-empty-p q))
                    ;; Collect the queue's top value into `*screamer-results*'
-                   (appendf *screamer-results* (list (lparallel.queue:pop-queue q)))
+                   (appendf screamer::*screamer-results* (list (lparallel.queue:pop-queue q)))
 
                    ;; When max result count is reached, discard extra values and decide to escape
                    (check-max-results)
 
-                   ;; Update `*last-value-cons*' for bookkeeping reasons
-                   (setf *last-value-cons* (last *screamer-results*)))
+                   ;; Update `screamer::*last-value-cons*' for bookkeeping reasons
+                   (setf screamer::*last-value-cons* (last screamer::*screamer-results*)))
 
                  ;; Propagate escapes
                  (maybe-propagate-escapes)))))
@@ -350,8 +252,8 @@ variables."
           (cond
             ;; If in an `n-values' form and reaching the required result-count, call `escape' with the results
             ((and max-results
-                  (= (length *screamer-results*) max-results))
-             (escape *screamer-results*))
+                  (= (length screamer::*screamer-results*) max-results))
+             (screamer::escape screamer::*screamer-results*))
             ;; Otherwise just `fail'
             (t (fail))))
      ;; Check again to ensure all futures have been forced before exiting, in case
@@ -360,7 +262,7 @@ variables."
 
 (defun p-an-element-of (collection)
   "Parallel version of AN-ELEMENT-OF."
-  (p-a-member-of (collection-to-sequence collection)))
+  (p-a-member-of (screamer::collection-to-sequence collection)))
 
 (cl:defmacro p-either (&rest options)
   "Like EITHER, but runs all options in parallel.
@@ -397,67 +299,3 @@ how many threads to run at once"
     (either
       (p-a-member-of (nreverse (alexandria:iota *maximum-discretization-range* :start (1+ low))))
       (p-an-integer-below low))))
-
-(defmacro-compile-time lambda-nondeterministic (args &body body)
-  "Defines an unnamed Screamer function-object, e.g. to reuse
-between multiple Screamer forms.
-
-Note that these MUST be called via `funcall-nondeterministic',
-and are incompatible with the standard `funcall'."
-  `(one-value (lambda ,args ,@body)))
-
-(export '(collect-trail
-          uniquely?
-          bounded?
-          grounded?
-          mapcar-nondeterministic
-          == /==
-          pure-values
-          pure-one-value
-          an-element-of
-          sample
-          sample-once
-          sample-optimizing
-          normalize-probabilities
-          factor-prob
-          *possibility-consolidator*
-          *screamer-max-failures*
-          lambda-nondeterministic
-          call/cc))
-
-
-
-;;; FIXME: fix the below case to return (1 1 3 3)
-(s:comment
-  "If we add an x after the call to `cc-cache'
-that x value gets returned, so looks like the
-expansion isn't putting the call to the cc on
-the direct path to the `all-values' collection
-code?"
-  "I think the issue is in part that the
-funcall's output (nil) is being tracked as well.
-Still not sure why the continuation itself doesn't
-push a value into `*screamer-results*', though; the
-output series without the `push'es to `result-cache'
-should be (1 1 nil 3 3 nil) given this model not
-just (1 nil 3 nil)"
-  (let (cc-cache
-        result-cache)
-    (all-values
-      (let ((x (either 1 2 3 4)))
-        (global
-          ;; (print (list 'early cc-cache))
-          (call/cc (lambda (cc)
-                     (when (oddp x)
-                       (setf cc-cache cc))
-                     ;; (print (list 'within-cont cc-cache))
-                     (funcall cc nil)))
-          (print (list 'cc-cache cc-cache 'x x))
-          (push (print (list 'result
-                             (if (evenp x)
-                                 (progn
-                                   ;; (print (list 'x x))
-                                   ;; (print (list 'internal cc-cache))
-                                   (funcall cc-cache (1+ x)))
-                                 (progn (print (list 'getting-x x)) x))))
-                result-cache))))))
