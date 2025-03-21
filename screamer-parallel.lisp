@@ -8,6 +8,13 @@
 (defparameter *p-a-member-of-parent-lock* (lparallel.queue:make-queue :fixed-capacity 1))
 (defparameter *p-a-member-of-context* nil)
 
+(defmethod screamer::clean-up-screamer :around ()
+  (when (null *nondeterministic-context*)
+    (unless (lparallel.queue:queue-empty-p *p-a-member-of-parent-lock*)
+      (lparallel.queue:pop-queue *p-a-member-of-parent-lock*))
+    (setf *p-a-member-of-context* nil))
+  (call-next-method))
+
 ;;; TODO: Add a `when-succeeding' form that allows you
 ;;; to take additional actions when a collection form
 ;;; is succeeding. This would allow collecting intermediate
@@ -118,11 +125,12 @@ variables."
                  (future-count (bt2:make-atomic-integer :value (length sequence)))
                  (continue-parent-condition (bt:make-condition-variable :name "triggers check on future-count"))
                  (continue-child-condition (bt:make-condition-variable :name "trigger actual execution of child futures")))
-            ;; (print "waiting for parent loc")
+            (print "waiting for parent loc")
             ;; (iter:iter
             ;;   ;; Wait for queue to have room
             ;;   (while (lparallel.queue:queue-full-p *p-a-member-of-parent-lock*)))
             (lparallel.queue:push-queue t *p-a-member-of-parent-lock*)
+            (print "got parent lock")
             ;; Undo changes to global variables once futures
             ;; are created
             (unwind-protect
@@ -243,7 +251,10 @@ variables."
                                    (setf accumulator-config-tracker (gethash :screamer-accumulation-strategy screamer::*nondeterministic-context*)))
 
                               ;; Tell the parent thread that this future is set up
-                              (bt2:atomic-integer-decf (gethash "future-count" *p-a-member-of-context*)))
+                              (bt2:atomic-integer-decf (gethash "future-count" *p-a-member-of-context*))
+                              (print "starting")
+                              ;; Wait until all futures have started
+                              (iter:iter (while (> (bt2:atomic-integer-value (gethash "future-count" *p-a-member-of-context*)) 0))))
 
 
 
@@ -292,7 +303,7 @@ variables."
               (iter:iter (while (> (bt2:atomic-integer-value future-count) 0))
                 (bt:thread-yield))
 
-              ;; (print "outer after loop")
+              (print "outer after loop")
 
               ;; Reset `*p-a-member-of-context*'
               (setf *p-a-member-of-context* original-context)

@@ -360,13 +360,19 @@ in comparison to `cl:mapcar'"
     '(&optional &rest &key &allow-other-keys &aux)
   "The allowed lambda list keywords in order.")
 
+(defgeneric clean-up-screamer ()
+  (:documentation "Cleanup forms for Screamer. Called while unwinding through any choice point."))
+(defmethod clean-up-screamer ())
+
 (defmacro-compile-time choice-point-internal (form)
   `(catch '%fail
-     (let* ((toplevel (typep *nondeterministic-context* '(not null)))
-            (*nondeterministic-context* (or *nondeterministic-context* (s:dict))))
-       (declare (ignorable toplevel))
-       (unwind-protect ,form
-         (unwind-trail-to trail-pointer)))))
+     (unwind-protect
+          (let* ((toplevel (typep *nondeterministic-context* '(not null)))
+                 (*nondeterministic-context* (or *nondeterministic-context* (s:dict))))
+            (declare (ignorable toplevel))
+            (unwind-protect ,form
+              (unwind-trail-to trail-pointer)))
+       (clean-up-screamer))))
 
 (defmacro-compile-time choice-point-external (&rest forms)
   ;; NOTE: Is it really better to use VECTOR-PUSH-EXTEND than CONS for the
