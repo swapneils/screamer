@@ -19,6 +19,9 @@
 (cl:defun p-a-member-of (sequence &key (ordered t))
   "EXPERIMENTAL
 Parallel version of a-member-of.
+Note that this method requires the implementation
+to share lexical variables with new threads. This
+is NOT guaranteed on all implementations.
 
 All forms which would be evaluated after this one
 are instead evaluated in multiple different threads,
