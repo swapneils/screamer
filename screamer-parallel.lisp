@@ -109,6 +109,15 @@ variables."
             (push
              ;; Make a closure so we don't accidentally
              ;; reference the outer value of `el'
+             ;; FIXME: We can't assume that lexical variables
+             ;; are carried into `bt:make-thread', the
+             ;; underlying implementation behind `lparallel:future'
+             ;; TODO: Make a global variable to store the context
+             ;; information and set it manually every time we
+             ;; create these futures? Within a single thread it
+             ;; shouldn't be invoked more than once, and if
+             ;; we use a semaphore to only run child threads once
+             ;; the parent is ready, there won't be nested conflicts.
              (let ((el el))
                (lparallel:future
                  (let* (
