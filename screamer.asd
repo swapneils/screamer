@@ -63,8 +63,7 @@
   :author "Originally Jeffrey Mark Siskind & David Allen McAllester, extended by Swapneil Singh"
   :maintainer "Swapneil Singh"
   :version "5.1.3"
-  :depends-on ("screamer/core"
-               "screamer/prob"))
+  :depends-on ("screamer/core"))
 
 (defsystem :screamer/parallel
   :serial t
@@ -87,6 +86,7 @@
   :maintainer "Swapneil Singh"
   :version "0.0.1"
   :depends-on ("screamer"
+               "screamer/prob"
                "screamer/parallel")
   :components
   ((:file "screamer-experimental")))

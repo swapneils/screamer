@@ -37,6 +37,46 @@ pervasive.
 Screamer was originally written by Jeffrey Mark Siskind and David Allen McAllester,
 see file LICENSE for licensing information (1-clause MIT License).
 
+* Contribution policy
+This policy is meant to guide contributions to ~screamer~ and better inform
+users about what they can expect from the library:
+
+** General guidelines:
+- ~screamer/core~ is stable (i.e. not subject to backwards incompatibility) and
+  will not accept changes to intended functionality.
+  - Additions to intended functionality are possible but dispreferred, and
+    ideally should only be for the purpose of better fulfilling the existing
+    scope of ~screamer/core~.
+- ~screamer~ is stable.
+  - Changes or additions to intended functionality are possible, though the
+    standard recommendation is to create an extension sub-system instead.
+- Extensions and other sub-systems will be stable within major versions.
+  - Further stability guarantees are per the sub-system's maintainers' judgement.
+- Systems labeled ~experimental~ or with sub-1.0 version numbers are not stable.
+
+** To make backwards incompatible changes to the behavior of an existing subsystem
+- If the change is to fix deviation from the intended behavior / experience,
+  approval is at the discretion of the code owner.
+- If the change is to modify the intended behavior / experience, the recommendation
+  is to provide a different endpoint while maintaining the existing API
+- If the change does not allow maintaining the existing API, create a new sub-system
+  instead of modifying the existing one.
+
+Of the above cases, the first and second cases would require a version bump to release
+in ~master~, with the level (e.g. major/minor/etc.) determined by the code-owner.
+
+** Deployment process (subject to change)
+Changes should first be merged into the ~dev~ branch. A change is considered released
+when it is merged from ~dev~ to ~master~.
+
+** To test changes to an existing subsystem
+If the changes do not need to be published to be tested, modifications can be in forks
+or other branches.
+
+If the changes need to be published to be tested, it is recommended to make another
+subsystem with the suffix "experimental", which either replaces or patches the subsystem
+being tested. Changes can be made in this experimental sub-system and then released to
+the original subsystem after being tested.
 * Changes
 See CHANGELOG.org
 ** Incompatible changes from Screamer 4 to Screamer 5

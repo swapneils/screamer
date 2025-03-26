@@ -1,5 +1,11 @@
 #+title: Changelog
 
+* Maintenance changes
+- Move ~screamer/prob~ out of default ~screamer~ system,
+  restoring the original scope of the default ~screamer~
+  experience.
+- Add contribution policy to README to avoid future instability
+  and better set expectations for contributors.
 * screamer/parallel 0.0.1
 Break out parallelism constructs into their own separate system.
 * screamer/core v5.2.1
