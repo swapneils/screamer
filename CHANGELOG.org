@@ -1,5 +1,9 @@
 #+title: Changelog
 
+* screamer/prob
+- Add gensyms in ~all-values-prob~ where before we were
+  inserting symbols directly.
+- Resolve some compiler warnings in ~all-values-prob~.
 * Maintenance changes
 - Move ~screamer/prob~ out of default ~screamer~ system,
   restoring the original scope of the default ~screamer~

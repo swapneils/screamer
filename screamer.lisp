@@ -3305,43 +3305,43 @@ sum of the probabilities returned will be less than 1."
         (pointer (gensym "enclosing-trail-pointer"))
         ;; TODO: Figure out why we can't make this a `gensym'
         (value 'value))
-    `(let ((,values '())
-           (*last-value-cons* nil)
-           ;; Reset probability
-           (,pointer (prog1 (fill-pointer *trail*)
-                       (trail-prob nil 1))))
-       ;; Process BODY
-       (for-effects
-         (local (setf (gethash :screamer-accumulation-strategy *nondeterministic-context*) (list :all-values)))
-         (let* ((,value (progn ,@body))
-                (,value (copy-output-value ,value)))
-           (global (if (null ,values)
-                       (setf *last-value-cons* (list
-                                                (list ,value
-                                                      (current-probability *trail*)))
-                             ,values *last-value-cons*)
-                       (setf (rest *last-value-cons*) (list
-                                                       (list ,value
-                                                             (current-probability *trail*)))
-                             *last-value-cons* (rest *last-value-cons*))))))
-       ;; Return to enclosing trail context
-       (unwind-trail-to ,pointer)
-       ;; Consolidate probabilities
-       (if *possibility-consolidator*
-           (flet ((merge-vals (vals)
-                    (let ((prev nil))
-                      (mapc (lambda (v)
-                              (if-let (prev-val (assoc (first v) prev
-                                                       :test *possibility-consolidator*))
-                                (progn (incf (second prev-val)
-                                             (second v))
-                                       (cons v))
-                                (push v prev)))
-                            vals)
-                      (list vals)
-                      prev)))
-             (merge-vals ,values))
-           ,values))))
+    (alexandria:with-gensyms (v merge-vals prev prev-val)
+      `(let ((,values '())
+             (*last-value-cons* nil)
+             ;; Reset probability
+             (,pointer (prog1 (fill-pointer *trail*)
+                         (trail-prob nil 1))))
+         ;; Process BODY
+         (for-effects
+           (local (setf (gethash :screamer-accumulation-strategy *nondeterministic-context*) (list :all-values)))
+           (let* ((,value (progn ,@body))
+                  (,value (copy-output-value ,value)))
+             (global (if (null ,values)
+                         (setf *last-value-cons* (list
+                                                  (list ,value
+                                                        (current-probability *trail*)))
+                               ,values *last-value-cons*)
+                         (setf (rest *last-value-cons*) (list
+                                                         (list ,value
+                                                               (current-probability *trail*)))
+                               *last-value-cons* (rest *last-value-cons*))))))
+         ;; Return to enclosing trail context
+         (unwind-trail-to ,pointer)
+         ;; Consolidate probabilities
+         (if *possibility-consolidator*
+             (flet ((,merge-vals (vals)
+                      (let ((,prev nil))
+                        (mapc (lambda (,v)
+                                (if-let (,prev-val (assoc (first ,v) ,prev
+                                                         :test *possibility-consolidator*))
+                                  (incf (second ,prev-val)
+                                               (second ,v))
+                                  (push ,v ,prev)))
+                              vals)
+                        ,prev)))
+               (declare (inline ,merge-vals))
+               (,merge-vals ,values))
+             ,values)))))
 
 (defmacro-compile-time expected-prob (&body body)
   "Returns the sum of the probabilities of all the values produced by

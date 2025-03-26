@@ -52,7 +52,7 @@
   :description "Probabilistic reasoning for Screamer."
   :author "Swapneil Singh"
   :maintainer "Swapneil Singh"
-  :version "0.0.3"
+  :version "0.0.4"
   :depends-on ("screamer/core")
   :components
   ((:file "screamer-prob")))
