@@ -194,14 +194,13 @@ Use this to deal with floating-point errors, if necessary.
 
 This value must be a floating point number between 0 and 1.")
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (declaim (type (float 0 1) *numeric-bounds-collapse-threshold*)))
+  (declaim (type (single-float 0.0 1.0) *numeric-bounds-collapse-threshold*)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (inline roughly-=)))
 (defun-compile-time roughly-= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
-  (declare (number a b)
-           (optimize (speed 3) (debug 0)))
+  (declare (optimize (speed 3) (debug 0)))
   (or (= a b)
       ;; For floats, also allow them to be "close enough"
       (and (floatp a) (floatp b)
@@ -212,16 +211,14 @@ This value must be a floating point number between 0 and 1.")
   (declaim (inline roughly-<=)))
 (defun-compile-time roughly-<= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
-  (declare (number a b)
-           (optimize (speed 3) (debug 0)))
+  (declare (optimize (speed 3) (debug 0)))
   (or (<= a b) (roughly-= a b)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (inline roughly->=)))
 (defun-compile-time roughly->= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
-  (declare (number a b)
-           (optimize (speed 3) (debug 0)))
+  (declare (optimize (speed 3) (debug 0)))
   (or (>= a b) (roughly-= a b)))
 
 (defvar-compile-time *cons-cache* (cons nil nil)
@@ -338,16 +335,6 @@ in comparison to `cl:mapcar'"
 (defun-compile-time orf (&rest fs)
   (lambda (&rest xs)
     (some (rcurry #'apply xs) fs)))
-
-(cl:defun variable-enumerated-domain-type (var)
-  (declare (optimize (speed 3) (space 3) (debug 0)))
-  (when (and (variable? var)
-             ;; Has non-null enumerated domain
-             (variable-enumerated-domain var)
-             ;; Has an actual list of enumerated values
-             (listp (variable-enumerated-domain var)))
-    ;; Return an or type containing the different values
-    `(or ,@(mapcar (serapeum:op `(value ,_)) (variable-enumerated-domain var)))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
      (declaim (hash-table *function-record-table*)))
@@ -4883,6 +4870,16 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
 #+screamer-clos
 (defun-compile-time variable? (thing) (typep thing 'variable))
 
+(defun-compile-time variable-enumerated-domain-type (var)
+  (declare (optimize (speed 3) (space 3) (debug 0)))
+  (when (and (variable? var)
+             ;; Has non-null enumerated domain
+             (variable-enumerated-domain var)
+             ;; Has an actual list of enumerated values
+             (listp (variable-enumerated-domain var)))
+    ;; Return an or type containing the different values
+    `(or ,@(mapcar (serapeum:op `(value ,_)) (variable-enumerated-domain var)))))
+
 (defun-compile-time noticer-member (val var)
   (declare (function val) (variable var))
   (iter:iter
@@ -4938,61 +4935,6 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
         (vector (map 'vector #'eliminate-variables x))
         (t (eliminate-variables (value-of x))))
       x))
-
-(defun print-variable (x stream print-level)
-  (declare (ignore print-level)
-           (stream stream))
-  (let ((x (value-of x)))
-    (cond
-      ((variable? x)
-       (if (and (not (eq (variable-enumerated-domain x) t))
-                (not (null (variable-enumerated-antidomain x))))
-           (error "This shouldn't happen"))
-       (format stream "[~S" (variable-name x))
-       (format stream "~A"
-               (cond ((variable-boolean? x) " Boolean")
-                     ((variable-integer? x) " integer")
-                     ((variable-real? x)
-                      (if (variable-noninteger? x) " noninteger-real" " real"))
-                     ((variable-number? x)
-                      (cond ((variable-nonreal? x) " nonreal-number")
-                            ((variable-noninteger? x) " noninteger-number")
-                            (t " number")))
-                     ((variable-nonnumber? x) " nonnumber")
-                     ((variable-nonreal? x) " nonreal")
-                     ((variable-noninteger? x) " noninteger")
-                     (t "")))
-       (if (variable-real? x)
-           (if (variable-lower-bound x)
-               (if (variable-upper-bound x)
-                   (format stream " ~D:~D"
-                           (variable-lower-bound x) (variable-upper-bound x))
-                   (format stream " ~D:" (variable-lower-bound x)))
-               (if (variable-upper-bound x)
-                   (format stream " :~D" (variable-upper-bound x)))))
-       (if (and (not (eq (variable-enumerated-domain x) t))
-                (not (variable-boolean? x)))
-           (format stream " enumerated-domain:~S"
-                   (variable-enumerated-domain x)))
-       (if (not (null (variable-enumerated-antidomain x)))
-           (format stream " enumerated-antidomain:~S"
-                   (variable-enumerated-antidomain x)))
-       (format stream "]"))
-      (t (format stream "~S" x)))))
-
-(defun make-variable (&optional (name nil name?))
-  "Creates and returns a new variable. Variables are assigned a name
-which is only used to identify the variable when it is printed. If the
-parameter NAME is given then it is assigned as the name of the
-variable. Otherwise, a unique name is assigned. The parameter NAME can
-be any Lisp object."
-  (let ((variable
-          #-screamer-clos
-          (make-variable-internal :name (if name? name (incf *name*)))
-          #+screamer-clos
-          (make-instance 'variable :name (if name? name (incf *name*)))))
-    (setf (variable-value variable) variable)
-    variable))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (inline variable-integer?)))
@@ -5091,6 +5033,61 @@ variable which is shared with X."
        (return-from value-of x))
      ;; (setf x (variable-value x))
      (go loop)))
+
+(defun print-variable (x stream print-level)
+  (declare (ignore print-level)
+           (stream stream))
+  (let ((x (value-of x)))
+    (cond
+      ((variable? x)
+       (if (and (not (eq (variable-enumerated-domain x) t))
+                (not (null (variable-enumerated-antidomain x))))
+           (error "This shouldn't happen"))
+       (format stream "[~S" (variable-name x))
+       (format stream "~A"
+               (cond ((variable-boolean? x) " Boolean")
+                     ((variable-integer? x) " integer")
+                     ((variable-real? x)
+                      (if (variable-noninteger? x) " noninteger-real" " real"))
+                     ((variable-number? x)
+                      (cond ((variable-nonreal? x) " nonreal-number")
+                            ((variable-noninteger? x) " noninteger-number")
+                            (t " number")))
+                     ((variable-nonnumber? x) " nonnumber")
+                     ((variable-nonreal? x) " nonreal")
+                     ((variable-noninteger? x) " noninteger")
+                     (t "")))
+       (if (variable-real? x)
+           (if (variable-lower-bound x)
+               (if (variable-upper-bound x)
+                   (format stream " ~D:~D"
+                           (variable-lower-bound x) (variable-upper-bound x))
+                   (format stream " ~D:" (variable-lower-bound x)))
+               (if (variable-upper-bound x)
+                   (format stream " :~D" (variable-upper-bound x)))))
+       (if (and (not (eq (variable-enumerated-domain x) t))
+                (not (variable-boolean? x)))
+           (format stream " enumerated-domain:~S"
+                   (variable-enumerated-domain x)))
+       (if (not (null (variable-enumerated-antidomain x)))
+           (format stream " enumerated-antidomain:~S"
+                   (variable-enumerated-antidomain x)))
+       (format stream "]"))
+      (t (format stream "~S" x)))))
+
+(defun make-variable (&optional (name nil name?))
+  "Creates and returns a new variable. Variables are assigned a name
+which is only used to identify the variable when it is printed. If the
+parameter NAME is given then it is assigned as the name of the
+variable. Otherwise, a unique name is assigned. The parameter NAME can
+be any Lisp object."
+  (let ((variable
+          #-screamer-clos
+          (make-variable-internal :name (if name? name (incf *name*)))
+          #+screamer-clos
+          (make-instance 'variable :name (if name? name (incf *name*)))))
+    (setf (variable-value variable) variable)
+    variable))
 
 (defun variablize (x)
   (if (variable? x)
@@ -5603,6 +5600,8 @@ Otherwise returns the value of X."
                 (range (range-size x))
                 (enumerated (variable-enumerated-domain x))
                 (lower (variable-lower-bound x)))
+            (declare (type (or null real) range)
+                     (type (or null integer) domain))
             (when (or (and (numberp domain) (= domain 1))
                       (and (numberp range) (roughly-= range 0)))
               (restrict-value! x (cond
