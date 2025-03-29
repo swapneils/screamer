@@ -3780,11 +3780,8 @@ selection (due to either a normal return, or calling FAIL.)"
             (return-from unwind-trail-to))
           (let ((fun (pop-trail trail)))
             (when (consp fun)
-              (let ((c fun))
-                ;; Complex trail elements always have a function or nil as their first element
-                (setf fun (car fun))
-                ;; A trail element should not be referred to after it is released, so we can reuse the cons
-                (cons c)))
+              ;; Complex trail elements always have a function or nil as their first element
+              (setf fun (car fun)))
             (when (functionp fun)
               (funcall fun)))
           ;; NOTE: This is to allow the trail closures to be garbage collected.
@@ -4738,9 +4735,7 @@ TIMES must be a non-negative integer."
                        (iter:for targ-new-prob = (get-new-prob targ))
                        ;; Increment the probability by the current probability
                        ;; times the odds of the transition
-                       (incf (second targ-new-prob) (* p targ-p)))
-                     (unless alist-machine
-                       (cons s-spec)))
+                       (incf (second targ-new-prob) (* p targ-p))))
 
                    ;; If the state machine stabilizes, return early
                    ;; NOTE: We don't do this for function machines,
