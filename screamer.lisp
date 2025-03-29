@@ -1633,6 +1633,7 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
           (let* ((match (assoc form-name *screamer-macroexpansions*))
                  ;; Get the macroexpansion function
                  (converter (cdr match)))
+            (declare (function converter))
             ;; (print '(known-macro))
             ;; Call the macroexpansion function on the args and look at the result
             (call-expansion (apply converter form-args) environment)))
@@ -1642,6 +1643,7 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
           (let* ((match (assoc (list 'symbol form) *screamer-macroexpansions* :test 'equal))
                  ;; Get the macroexpansion function
                  (converter (cdr match)))
+            (declare (function converter))
             ;; (print `(known-symbol ,form match ,match))
             (call-expansion (funcall converter) environment)))
          ;; If the form doesn't match the lexical expansion cases, walk the form.
