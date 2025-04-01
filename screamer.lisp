@@ -5182,7 +5182,7 @@ Otherwise returns the value of X."
     ((and (variable? value) (not (eq value (variable-value value))))
      (occurs-in? x (variable-value value)))
     ((consp value) (or (occurs-in? x (car value)) (occurs-in? x (cdr value))))
-    ((s:sequencep value) (some (lambda (val) (occurs-in? x val)) value))
+    ((s:sequencep value) (some (curry #'occurs-in? x) value))
     ((arrayp value) (block occurs-in
                       (dotimes (idx (array-total-size value))
                         (when (occurs-in? x (row-major-aref value idx))
@@ -6132,9 +6132,9 @@ Otherwise returns the value of X."
   (let ((x (value-of x))
         (y (value-of y))
         (z (value-of z)))
-    (when (and (not (variable? x))
-               (not (variable? y))
-               (not (variable? z))
+    (when (and (not (or (variable? x)
+                        (variable? y)
+                        (variable? z)))
                (/= z (+ x y)))
       (fail))))
 
@@ -9549,16 +9549,16 @@ domain size is odd, the halves differ in size by at most one."
                                                (serapeum:range lower-bound upper-bound
                                                                (/ (range-size variable)
                                                                   *maximum-discretization-range*))))
-                               ;; Add midpoint and bounds to make sure they're not missing.
-                               ;; Also convert to a list for compatibility with function
-                               ;; signatures.
-                               ;; NOTE: If enumerations is empty then this just checks the bounds
-                               (enumerations (concatenate 'list enumerations
-                                                          (list lower-bound midpoint upper-bound)))
-                               ;; Remove duplicate values
-                               (enumerations (remove-duplicates enumerations :test #'=))
-                               ;; Sort enumerations
-                               (enumerations (cl:sort enumerations #'<)))
+                               (enumerations (serapeum:~>
+                                              ;; Add midpoint and bounds to make sure they're not missing.
+                                              ;; Also convert to a list for compatibility with function
+                                              ;; signatures.
+                                              ;; NOTE: If enumerations is empty then this just checks the bounds
+                                              (concatenate 'list enumerations
+                                                           (list lower-bound midpoint upper-bound))
+                                              ;; Remove duplicate values and sort
+                                              (remove-duplicates :test #'=)
+                                              (cl:sort #'<))))
                           (either
                             (restrict-value! variable
                                              (a-member-of enumerations))
@@ -9665,12 +9665,12 @@ Other types of objects and variables have range size NIL."
         (best-cost nil))
     (dolist (x list)
       (let ((x (value-of x)))
-        (if (and (variable? x) (not (corrupted? x)))
-            (let ((cost (funcall cost x)))
-              (when (and (not (null cost))
-                         (or (null best-cost) (funcall order cost best-cost)))
-                (setf best x)
-                (setf best-cost cost))))))
+        (when (and (variable? x) (not (corrupted? x)))
+          (let ((cost (funcall cost x)))
+            (when (and (not (null cost))
+                       (or (null best-cost) (funcall order cost best-cost)))
+              (setf best x)
+              (setf best-cost cost))))))
     best))
 
 (defun reorder-internal
