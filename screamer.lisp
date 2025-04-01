@@ -201,11 +201,14 @@ This value must be a floating point number between 0 and 1.")
 (defun-compile-time roughly-= (a b)
   ;; "Tests approximate numeric equality using `*numeric-bounds-collapse-threshold*'"
   (declare (optimize (speed 3) (debug 0)))
-  (or (= a b)
-      ;; For floats, also allow them to be "close enough"
-      (and (floatp a) (floatp b)
-           (<= (abs (- a b))
-               *numeric-bounds-collapse-threshold*))))
+  (serapeum:nest
+   (serapeum:with-subtype-dispatch number (fixnum ratio single-float double-float) a)
+   (serapeum:with-subtype-dispatch number (fixnum ratio single-float double-float) b)
+   (or (= a b)
+       ;; For floats, also allow them to be "close enough"
+       (and (floatp a) (floatp b)
+            (<= (abs (- a b))
+                *numeric-bounds-collapse-threshold*)))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (inline roughly-<=)))
@@ -5469,9 +5472,10 @@ Otherwise returns the value of X."
         (fail))
     (when (or (not (variable-lower-bound x))
               (not (variable-upper-bound x))
-              (>= (/ (- lower-bound (variable-lower-bound x))
-                     (- (variable-upper-bound x) (variable-lower-bound x)))
-                  *minimum-shrink-ratio*))
+              (roughly->=
+               (/ (- lower-bound (variable-lower-bound x))
+                  (- (variable-upper-bound x) (variable-lower-bound x)))
+               *minimum-shrink-ratio*))
       (local (setf (variable-lower-bound x) lower-bound))
       (cond ((eq (variable-enumerated-domain x) t)
              (if (and lower-bound
@@ -5508,9 +5512,10 @@ Otherwise returns the value of X."
       (fail))
     (when (or (not (variable-lower-bound x))
               (not (variable-upper-bound x))
-              (>= (/ (- (variable-upper-bound x) upper-bound)
-                     (- (variable-upper-bound x) (variable-lower-bound x)))
-                  *minimum-shrink-ratio*))
+              (roughly->=
+               (/ (- (variable-upper-bound x) upper-bound)
+                  (- (variable-upper-bound x) (variable-lower-bound x)))
+               *minimum-shrink-ratio*))
       (local (setf (variable-upper-bound x) upper-bound))
       (cond ((eq (variable-enumerated-domain x) t)
              (when (and (variable-lower-bound x)
@@ -5564,9 +5569,10 @@ Otherwise returns the value of X."
             (fail))
           (when (or (not (variable-lower-bound x))
                     (not (variable-upper-bound x))
-                    (>= (/ (- (variable-upper-bound x) upper-bound)
-                           (- (variable-upper-bound x) (variable-lower-bound x)))
-                        *minimum-shrink-ratio*))
+                    (roughly->=
+                     (/ (- (variable-upper-bound x) upper-bound)
+                        (- (variable-upper-bound x) (variable-lower-bound x)))
+                     *minimum-shrink-ratio*))
             (local (setf (variable-upper-bound x) upper-bound))
             (setf run? t)))
         (when run?
@@ -5575,9 +5581,10 @@ Otherwise returns the value of X."
                           (variable-upper-bound x)
                           (variable-integer? x)
                           (or (null *maximum-discretization-range*)
-                              (<= (- (variable-upper-bound x)
-                                     (variable-lower-bound x))
-                                  *maximum-discretization-range*)))
+                              (roughly-<=
+                               (- (variable-upper-bound x)
+                                  (variable-lower-bound x))
+                               *maximum-discretization-range*)))
                      (set-enumerated-domain!
                       x (integers-between
                          (variable-lower-bound x)
@@ -6094,11 +6101,14 @@ Otherwise returns the value of X."
                     (y-dom (remove-if-not #'rationalp (variable-enumerated-domain y))))
                 (block +-rule-up-check-noninteger-by-domain
                   ;; Iterate through the enumerated domains
-                  (dolist (x-value x-dom)
-                    (dolist (y-value y-dom)
-                      (when (integerp (+ x-value y-value))
-                        (setf integer-possible t)
-                        (return-from +-rule-up-check-noninteger-by-domain)))))
+                  (serapeum:nest
+                   (dolist (x-value x-dom))
+                   (serapeum:with-subtype-dispatch real (fixnum ratio single-float double-float) x-value)
+                   (dolist (y-value y-dom))
+                   (serapeum:with-subtype-dispatch real (fixnum ratio single-float double-float) y-value)
+                   (when (serapeum:~> (+ x-value y-value) (mod 1) (zerop))
+                     (setf integer-possible t)
+                     (return-from +-rule-up-check-noninteger-by-domain))))
                 ;; Integer is not possible
                 (not integer-possible))))
     (restrict-noninteger! z))
@@ -9602,7 +9612,11 @@ have domain size of 1."
          (cond ((not (eq enumerated-domain t))
                 (length enumerated-domain))
                ((and upper-bound lower-bound (variable-integer? x))
-                (1+ (floor (- upper-bound lower-bound))))
+                (1+ (floor
+                     (serapeum:nest
+                      (serapeum:with-subtype-dispatch number (fixnum ratio single-float double-float) upper-bound)
+                      (serapeum:with-subtype-dispatch number (fixnum ratio single-float double-float) lower-bound)
+                      (- upper-bound lower-bound)))))
                (t nil))))
       (otherwise 1))))
 
@@ -9622,10 +9636,15 @@ Other types of objects and variables have range size NIL."
     (typecase x
       (integer 0)
       (real 0.0)
-      (variable (and (variable-real? x)
-                     (variable-lower-bound x)
-                     (variable-upper-bound x)
-                     (- (variable-upper-bound x) (variable-lower-bound x))))
+      (variable
+       (when (variable-real? x)
+         (let ((upper-bound (variable-upper-bound x))
+               (lower-bound (variable-lower-bound x)))
+           (when (and upper-bound lower-bound)
+             (serapeum:nest
+              (serapeum:with-subtype-dispatch real (fixnum ratio single-float double-float) upper-bound)
+              (serapeum:with-subtype-dispatch real (fixnum ratio single-float double-float) lower-bound)
+              (- upper-bound lower-bound))))))
       (otherwise nil))))
 
 (defun corrupted? (variable)
