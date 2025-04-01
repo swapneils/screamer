@@ -300,3 +300,12 @@
                 (z (+v x y)))
            (assert! (=v 1.0 z))
            (all-values (solution (list x y z) (static-ordering #'linear-force))))))))
+
+(deftest domain-size-integers-with-non-integer-bounds ()
+  (let ((n (an-integerv)))
+    (setf (screamer::variable-upper-bound n) 16.5)
+    (setf (screamer::variable-lower-bound n) 14.6)
+    (is (= (domain-size n) 2))
+    (is (equal
+         (all-values (solution n (static-ordering #'linear-force)))
+         '(15 16)))))

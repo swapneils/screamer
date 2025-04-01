@@ -1,5 +1,9 @@
 #+title: Changelog
 
+* screamer/core 5.2.2
+- Bugfix: ~domain-size~ no longer potentially calculates
+  incorrect sizes for integer variables with non-integer
+  lower and upper bounds.
 * screamer/prob
 - Add gensyms in ~all-values-prob~ where before we were
   inserting symbols directly.
