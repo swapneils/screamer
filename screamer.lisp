@@ -9598,7 +9598,7 @@ have domain size of 1."
              ((and (variable-lower-bound x)
                    (variable-upper-bound x)
                    (variable-integer? x))
-              (1+ (- (variable-upper-bound x) (variable-lower-bound x))))
+              (1+ (floor (- (variable-upper-bound x) (variable-lower-bound x)))))
              (t nil)))
       (otherwise 1))))
 
