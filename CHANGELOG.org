@@ -4,6 +4,9 @@
 - Bugfix: ~domain-size~ no longer potentially calculates
   incorrect sizes for integer variables with non-integer
   lower and upper bounds.
+- Enhancement: ~domain-size~ now works for arbitrary
+  sequences which potentially contain variables, not just
+  lists.
 * screamer/prob
 - Add gensyms in ~all-values-prob~ where before we were
   inserting symbols directly.

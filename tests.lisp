@@ -309,3 +309,9 @@
     (is (equal
          (all-values (solution n (static-ordering #'linear-force)))
          '(15 16)))))
+
+(deftest domain-size-works-on-non-list-sequences ()
+  (is (= (domain-size (vector (screamer::variablize 30)
+                              (an-integer-betweenv 1 4)
+                              (an-integer-betweenv 1 4)))
+         16)))

@@ -9592,14 +9592,18 @@ have domain size of 1."
   (let ((x (value-of x)))
     (typecase x
       (cons (infinity-* (domain-size (car x)) (domain-size (cdr x))))
+      (sequence
+       (if (emptyp x) 1
+           (reduce #'infinity-* (map 'list (op (or (domain-size _1) 1)) x))))
       (variable
-       (cond ((not (eq (variable-enumerated-domain x) t))
-              (length (variable-enumerated-domain x)))
-             ((and (variable-lower-bound x)
-                   (variable-upper-bound x)
-                   (variable-integer? x))
-              (1+ (floor (- (variable-upper-bound x) (variable-lower-bound x)))))
-             (t nil)))
+       (let ((enumerated-domain (variable-enumerated-domain x))
+             (upper-bound (variable-upper-bound x))
+             (lower-bound (variable-lower-bound x)))
+         (cond ((not (eq enumerated-domain t))
+                (length enumerated-domain))
+               ((and upper-bound lower-bound (variable-integer? x))
+                (1+ (floor (- upper-bound lower-bound))))
+               (t nil))))
       (otherwise 1))))
 
 (defun range-size (x)
