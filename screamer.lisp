@@ -188,13 +188,185 @@ This is meant as a simple convenience config, but doesn't play well with some
 other experimental features like `call/cc', so treating as experimental
 for now.")
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (type (single-float 0.0 1.0) *numeric-bounds-collapse-threshold*)))
 (defvar-compile-time *numeric-bounds-collapse-threshold* 0.0000000000001
   "The threshold of closeness to consider 2 numbers equivalent.
 Use this to deal with floating-point errors, if necessary.
 
 This value must be a floating point number between 0 and 1.")
+
+(defvar-compile-time *maximum-discretization-range* 20
+  "Discretize integer variables whose range is not greater than this number.
+Discretize all integer variables if NIL. Must be an integer or NIL.
+
+For some `p-screamer' constructs that can produce an unbounded count of values,
+this variable is also used to determine how many values are run in parallel at
+a time.")
+
+;;; NOTE: Enable this to use CLOS instead of DEFSTRUCT for variables.
+#+(or)
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (declaim (type (single-float 0.0 1.0) *numeric-bounds-collapse-threshold*)))
+  (pushnew :screamer-clos *features* :test #'eq))
+
+;;; TODO: Figure out how to track atoms that a variable
+;;; is dependent on, and its relationship to said atoms
+;;; (e.g. relative lower/upper bounds, etc)
+;;; This is necessary both for probabilistic reasoning by
+;;; weighted model counting, as well as for correct
+;;; lifted logical inference (e.g. in cases where the same
+;;; variable appears multiple times in an arithmetic
+;;; structure).
+;;; NOTE: How would this actually be /used/ to resolve
+;;; the second case? It seems that if grounding would
+;;; be a valid approach then it would already be done
+;;; via the noticer system...
+#-screamer-clos
+(defstruct-compile-time (variable (:print-function print-variable)
+                                  (:predicate variable?)
+                                  (:constructor make-variable-internal))
+  name
+  (noticers nil :type list)
+  (operation nil :type (or symbol null))
+  (dependencies nil :type list)
+  (type nil :type list)
+  (enumerated-domain t :type (or boolean list))
+  (enumerated-antidomain nil :type (or boolean list))
+  value
+  (possibly-integer? t :type boolean)
+  (possibly-noninteger-real? t :type boolean)
+  (possibly-nonreal-number? t :type boolean)
+  (possibly-boolean? t :type boolean)
+  (possibly-nonboolean-nonnumber? t :type boolean)
+  (lower-bound nil :type (or null number))
+  (upper-bound nil :type (or null number)))
+
+#+screamer-clos
+(defclass variable ()
+  ((name :accessor variable-name :initarg :name)
+   (noticers :accessor variable-noticers :initform nil)
+   (operation :accessor variable-operation :initform nil)
+   (dependencies :accessor variable-dependencies :initform nil)
+   (type :accessor variable-type :initform nil)
+   (enumerated-domain :accessor variable-enumerated-domain :initform t)
+   (enumerated-antidomain :accessor variable-enumerated-antidomain
+                          :initform nil)
+   (value :accessor variable-value)
+   (possibly-integer? :accessor variable-possibly-integer? :initform t)
+   (possibly-noninteger-real? :accessor variable-possibly-noninteger-real?
+                              :initform t)
+   (possibly-nonreal-number? :accessor variable-possibly-nonreal-number?
+                             :initform t)
+   (possibly-boolean? :accessor variable-possibly-boolean? :initform t)
+   (possibly-nonboolean-nonnumber?
+    :accessor variable-possibly-nonboolean-nonnumber?
+    :initform t)
+   (lower-bound :accessor variable-lower-bound :initform nil)
+   (upper-bound :accessor variable-upper-bound :initform nil)))
+
+;;; Helpers to interact with variable objects
+#+screamer-clos
+(defmethod print-object ((variable variable) stream)
+  (print-variable variable stream nil))
+
+#+screamer-clos
+(defun-compile-time variable? (thing) (typep thing 'variable))
+
+(defun-compile-time value-of (x)
+  "Returns X if X is not a variable. If X is a variable then VALUE-OF
+dereferences X and returns the dereferenced value. If X is bound then
+the value returned will not be a variable. If X is unbound then the
+value returned will be a variable which may be X itself or another
+variable which is shared with X."
+  (declare (optimize (speed 3) (space 3) (debug 0)))
+  (tagbody
+   loop
+     (when (or (not (variable? x))
+               #+screamer-clos (not (slot-boundp x 'value))
+               (eq x (setf x (variable-value x))))
+       (return-from value-of x))
+     (go loop)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline variable-enumerated-domain-type)))
+(defun-compile-time variable-enumerated-domain-type (var)
+  (declare (optimize (speed 3) (space 3) (debug 0)))
+  (when (and (variable? var)
+             ;; Has non-null enumerated domain
+             (variable-enumerated-domain var)
+             ;; Has an actual list of enumerated values
+             (listp (variable-enumerated-domain var)))
+    ;; Return an or type containing the different values
+    `(or ,@(mapcar (serapeum:op `(value ,_)) (variable-enumerated-domain var)))))
+
+(defun-compile-time noticer-member (val var)
+  (declare (function val) (variable var))
+  (iter:iter
+    (iter:for i in (variable-noticers var))
+    (when (typecase i (function (eq val i)))
+      (return t))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (type (integer 0) *name*)))
+(defvar-compile-time *name* 0 "The counter for anonymous variable names.")
+
+(defun-compile-time make-variable (&optional (name nil name?))
+  "Creates and returns a new variable. Variables are assigned a name
+which is only used to identify the variable when it is printed. If the
+parameter NAME is given then it is assigned as the name of the
+variable. Otherwise, a unique name is assigned. The parameter NAME can
+be any Lisp object."
+  (let ((variable
+          #-screamer-clos
+          (make-variable-internal :name (if name? name (incf *name*)))
+          #+screamer-clos
+          (make-instance 'variable :name (if name? name (incf *name*)))))
+    (setf (variable-value variable) variable)
+    variable))
+
+
+(defun-compile-time integers-between (low high)
+  (cond ((and (typep low 'fixnum) (typep high 'fixnum))
+         ;; KLUDGE: Don't change this to a LOOP, since in some implementations
+         ;; (eg. Lispworks) non-trivial LOOP generates MACROLETs that can't be
+         ;; supported by WALK.
+         (do ((result nil)
+              (i low (1+ i)))
+             ((> i high) (nreverse result))
+           (declare (type fixnum i))
+           (push i result)))
+        (t
+         ;; KLUDGE: As above.
+         (do ((result nil)
+              (i low (1+ i)))
+             ((> i high) (nreverse result))
+           (push i result)))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline booleanp)))
+(defun-compile-time booleanp (x)
+  "Returns true iff X is T or NIL."
+  (typep x 'boolean))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline infinity-min)))
+(defun-compile-time infinity-min (x y) (and x y (min x y)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline infinity-max)))
+(defun-compile-time infinity-max (x y) (and x y (max x y)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline infinity-+)))
+(defun-compile-time infinity-+ (x y) (and x y (+ x y)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline infinity--)))
+(defun-compile-time infinity-- (x y) (and x y (- x y)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline infinity-*)))
+(defun-compile-time infinity-* (x y) (and x y (* x y)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (inline roughly-=)))
@@ -3732,7 +3904,6 @@ Like PURE-VALUES, but only caches/outputs one value from the body, similar to ON
 ;;;
 ;;; So, we export TRAIL, and document UNWIND-TRAIL as being deprecated,
 ;;; and plan to delete it before 4.0.
-(declaim (inline trail trail-prob))
 (defun trail (obj)
   "When called in non-deterministic context, adds OBJ to the trail.
 Outside non-deterministic context does nothing.
@@ -4785,140 +4956,14 @@ output to Emacs, which will be deleted when the current choice is unwound."
 
 ;;; Constraints
 
-(defvar *name* 0 "The counter for anonymous names.")
-
 (defvar *minimum-shrink-ratio* 1e-2
   "Ignore propagations which reduce the range of a variable by less than this
 ratio.")
-
-(defvar *maximum-discretization-range* 20
-  "Discretize integer variables whose range is not greater than this number.
-Discretize all integer variables if NIL. Must be an integer or NIL.
-
-For some `p-screamer' constructs that can produce an unbounded count of values,
-this variable is also used to determine how many values are run in parallel at
-a time.")
 
 (defvar *strategy* :gfc
   "Strategy to use for FUNCALLV and APPLYV. Either :GFC for Generalized
 Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
 
-;;; NOTE: Enable this to use CLOS instead of DEFSTRUCT for variables.
-#+(or)
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (pushnew :screamer-clos *features* :test #'eq))
-
-;;; TODO: Figure out how to track atoms that a variable
-;;; is dependent on, and its relationship to said atoms
-;;; (e.g. relative lower/upper bounds, etc)
-;;; This is necessary both for probabilistic reasoning by
-;;; weighted model counting, as well as for correct
-;;; lifted logical inference (e.g. in cases where the same
-;;; variable appears multiple times in an arithmetic
-;;; structure).
-;;; NOTE: How would this actually be /used/ to resolve
-;;; the second case? It seems that if grounding would
-;;; be a valid approach then it would already be done
-;;; via the noticer system...
-#-screamer-clos
-(defstruct-compile-time (variable (:print-function print-variable)
-                                  (:predicate variable?)
-                                  (:constructor make-variable-internal))
-  name
-  (noticers nil :type list)
-  (operation nil :type (or symbol null))
-  (dependencies nil :type list)
-  (type nil :type list)
-  (enumerated-domain t :type (or boolean list))
-  (enumerated-antidomain nil :type (or boolean list))
-  value
-  (possibly-integer? t :type boolean)
-  (possibly-noninteger-real? t :type boolean)
-  (possibly-nonreal-number? t :type boolean)
-  (possibly-boolean? t :type boolean)
-  (possibly-nonboolean-nonnumber? t :type boolean)
-  (lower-bound nil :type (or null number))
-  (upper-bound nil :type (or null number)))
-
-#+screamer-clos
-(defclass variable ()
-  ((name :accessor variable-name :initarg :name)
-   (noticers :accessor variable-noticers :initform nil)
-   (operation :accessor variable-operation :initform nil)
-   (dependencies :accessor variable-dependencies :initform nil)
-   (type :accessor variable-type :initform nil)
-   (enumerated-domain :accessor variable-enumerated-domain :initform t)
-   (enumerated-antidomain :accessor variable-enumerated-antidomain
-                          :initform nil)
-   (value :accessor variable-value)
-   (possibly-integer? :accessor variable-possibly-integer? :initform t)
-   (possibly-noninteger-real? :accessor variable-possibly-noninteger-real?
-                              :initform t)
-   (possibly-nonreal-number? :accessor variable-possibly-nonreal-number?
-                             :initform t)
-   (possibly-boolean? :accessor variable-possibly-boolean? :initform t)
-   (possibly-nonboolean-nonnumber?
-    :accessor variable-possibly-nonboolean-nonnumber?
-    :initform t)
-   (lower-bound :accessor variable-lower-bound :initform nil)
-   (upper-bound :accessor variable-upper-bound :initform nil)))
-
-;;; Helpers to interact with variable objects
-#+screamer-clos
-(defmethod print-object ((variable variable) stream)
-  (print-variable variable stream nil))
-
-#+screamer-clos
-(defun-compile-time variable? (thing) (typep thing 'variable))
-
-(defun-compile-time variable-enumerated-domain-type (var)
-  (declare (optimize (speed 3) (space 3) (debug 0)))
-  (when (and (variable? var)
-             ;; Has non-null enumerated domain
-             (variable-enumerated-domain var)
-             ;; Has an actual list of enumerated values
-             (listp (variable-enumerated-domain var)))
-    ;; Return an or type containing the different values
-    `(or ,@(mapcar (serapeum:op `(value ,_)) (variable-enumerated-domain var)))))
-
-(defun-compile-time noticer-member (val var)
-  (declare (function val) (variable var))
-  (iter:iter
-    (iter:for i in (variable-noticers var))
-    (when (typecase i (function (eq val i)))
-      (return t))))
-
-
-(cl:defun integers-between (low high)
-  (cond ((and (typep low 'fixnum) (typep high 'fixnum))
-         ;; KLUDGE: Don't change this to a LOOP, since in some implementations
-         ;; (eg. Lispworks) non-trivial LOOP generates MACROLETs that can't be
-         ;; supported by WALK.
-         (do ((result nil)
-              (i low (1+ i)))
-             ((> i high) (nreverse result))
-           (declare (type fixnum i))
-           (push i result)))
-        (t
-         ;; KLUDGE: As above.
-         (do ((result nil)
-              (i low (1+ i)))
-             ((> i high) (nreverse result))
-           (push i result)))))
-
-(cl:defun booleanp (x)
-  "Returns true iff X is T or NIL."
-  (typep x 'boolean))
-
-(cl:defun infinity-min (x y) (and x y (min x y)))
-
-(cl:defun infinity-max (x y) (and x y (max x y)))
-
-(cl:defun infinity-+ (x y) (and x y (+ x y)))
-
-(cl:defun infinity-- (x y) (and x y (- x y)))
-
-(cl:defun infinity-* (x y) (and x y (* x y)))
 
 (cl:defun contains-variables? (x)
   (declare (optimize (speed 3) (space 3)))
@@ -5017,24 +5062,6 @@ Forward Checking, or :AC for Arc Consistency. Default is :GFC.")
   (declaim (inline variable-false?)))
 (cl:defun variable-false? (x) (null (variable-value x)))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declaim (inline value-of)))
-(cl:defun value-of (x)
-  "Returns X if X is not a variable. If X is a variable then VALUE-OF
-dereferences X and returns the dereferenced value. If X is bound then
-the value returned will not be a variable. If X is unbound then the
-value returned will be a variable which may be X itself or another
-variable which is shared with X."
-  (declare (optimize (speed 3) (space 3) (debug 0)))
-  (tagbody
-   loop
-     (when (or (not (variable? x))
-               #+screamer-clos (not (slot-boundp x 'value))
-               (eq x (setf x (variable-value x))))
-       (return-from value-of x))
-     ;; (setf x (variable-value x))
-     (go loop)))
-
 (defun print-variable (x stream print-level)
   (declare (ignore print-level)
            (stream stream))
@@ -5076,20 +5103,6 @@ variable which is shared with X."
        (format stream "]"))
       (t (format stream "~S" x)))))
 
-(defun make-variable (&optional (name nil name?))
-  "Creates and returns a new variable. Variables are assigned a name
-which is only used to identify the variable when it is printed. If the
-parameter NAME is given then it is assigned as the name of the
-variable. Otherwise, a unique name is assigned. The parameter NAME can
-be any Lisp object."
-  (let ((variable
-          #-screamer-clos
-          (make-variable-internal :name (if name? name (incf *name*)))
-          #+screamer-clos
-          (make-instance 'variable :name (if name? name (incf *name*)))))
-    (setf (variable-value variable) variable)
-    variable))
-
 (defun variablize (x)
   (if (variable? x)
       (tagbody
@@ -5101,8 +5114,6 @@ be any Lisp object."
          (go loop))
       (let ((y (make-variable))) (restrict-value! y x) y)))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (declaim (inline bound?)))
 (cl:defun bound? (x)
   "Returns T if X is not a variable or if X is a bound variable. Otherwise
 returns NIL. BOUND? is analogous to the extra-logical predicates `var' and
@@ -8681,10 +8692,12 @@ X2."
                  (setf known-mismatch t)
                  (return nil))))
          (unless known-mismatch
-           (assert! (notv (apply #'andv
-                                 (mapcar #'==v
-                                         a-variables
-                                         b-variables)))))))
+           (assert!-false
+            ;; Some matching element is equal
+            (apply #'andv
+                   (mapcar #'==v
+                           a-variables
+                           b-variables))))))
       (t (let ((x (variablize x))
                (y (variablize y)))
            (attach-noticer! #'(lambda () (/==-rule x y)) x)
