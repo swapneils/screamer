@@ -190,7 +190,7 @@ for now.")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (type (single-float 0.0 1.0) *numeric-bounds-collapse-threshold*)))
-(defvar-compile-time *numeric-bounds-collapse-threshold* 0.0000000000001
+(defvar-compile-time *numeric-bounds-collapse-threshold* 0.0
   "The threshold of closeness to consider 2 numbers equivalent.
 Use this to deal with floating-point errors, if necessary.
 
