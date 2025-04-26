@@ -7992,21 +7992,17 @@ the remaining argument. Otherwise returns number variable V.
 
 Note: Numeric contagion rules of Common Lisp are not applied if either
 argument equals zero."
-  ;; FIXME: Changing this for testing the type system, need
-  ;; to change it back afterwards.
-  (+v-internal xs)
-  ;; (let* ((uniques (sort (remove-duplicates xs)
-  ;;                       ;; Put bound values first
-  ;;                       (serapeum:op (and (bound? _) (not (bound? _))))))
-  ;;        (counts (mapcar (rcurry #'count xs) uniques))
-  ;;        (new-xs nil))
-  ;;   (declare (dynamic-extent uniques counts))
-  ;;   (dotimes (i (length uniques))
-  ;;     (let ((c (nth i counts))
-  ;;           (x (nth i uniques)))
-  ;;       (push (*v x c) new-xs)))
-  ;;   (+v-internal new-xs))
-  )
+  (let* ((uniques (sort (remove-duplicates xs)
+                        ;; Put bound values first
+                        (serapeum:op (and (bound? _) (not (bound? _))))))
+         (counts (mapcar (rcurry #'count xs) uniques))
+         (new-xs nil))
+    (declare (dynamic-extent uniques counts))
+    (dotimes (i (length uniques))
+      (let ((c (nth i counts))
+            (x (nth i uniques)))
+        (push (*v x c) new-xs)))
+    (+v-internal new-xs)))
 
 (defun -v-internal (x xs)
   (if (null xs) x (-v-internal (-v2 x (first xs)) (rest xs))))
