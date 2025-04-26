@@ -104,7 +104,7 @@
                  (if test-forms
                      `(are ,@test-forms)
                      t))))
-    (check-first-n-primordials 72)))
+    (check-first-n-primordials 73)))
 
 (deftest test-trail ()
   (is (equal '(t t t)

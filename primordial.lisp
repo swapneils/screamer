@@ -904,6 +904,22 @@
             (iter:collect (list i c))))))
     '(((1 1) (2 1)) ((1 1) (2 2)) ((1 2) (2 1)) ((1 2) (2 2))))))
 
+(defun test73 () ;; =v accepts cross-number-type comparisons
+  (let ((max-leg 20))
+    (known?
+     (equal
+      (all-values
+        (let* ((a (an-integer-betweenv 1 max-leg))
+               (b (an-integer-betweenv 1 max-leg))
+               (c2 (+v (*v a a) (*v b b)))
+               (c (funcallv #'sqrt c2))
+               (cmod (funcallv #'mod c 1)))
+          (assert! (>=v b a))
+          (assert! (=v cmod 0))
+          (solution (list a b (funcallv #'floor c))
+                    (static-ordering #'linear-force))))
+      '((3 4 5) (5 12 13) (6 8 10) (8 15 17) (9 12 15) (12 16 20) (15 20 25))))))
+
 ;;; This is the classic Screamer test entry point.
 ;;; screamer-tests::prime-ordeal runs the same tests under Stefil.
 (defun prime-ordeal ()

@@ -6482,12 +6482,16 @@ Otherwise returns the value of X."
                   ((bound? y) (list (value-of y)))
                   (t nil))))
       (when (and xdom ydom)
-        (let ((joined (intersection xdom ydom)))
-          (mapc
-           (lambda (v)
-             (when (variable? v)
-               (restrict-enumerated-domain! v joined)))
-           (list x y)))))))
+        (let ((filter-func (lambda (num)
+                             (and
+                              (member num xdom :test #'=)
+                              (member num ydom :test #'=)))))
+          (let ((new-xdom (remove-if-not filter-func xdom))
+                (new-ydom (remove-if-not filter-func ydom)))
+            (when (variable? x)
+              (restrict-enumerated-domain! x new-xdom))
+            (when (variable? y)
+              (restrict-enumerated-domain! y new-ydom))))))))
 
 (defun <=-rule (x y)
   (if (variable-lower-bound x)
