@@ -1,12 +1,20 @@
 #+title: Changelog
 
+*
 * screamer/core 5.2.2
 - Bugfix: ~domain-size~ no longer potentially calculates
   incorrect sizes for integer variables with non-integer
   lower and upper bounds.
+- Bugfix: ~=v~ in ~assert!~ does not incorrectly reject
+  certain cases of cross-numeric-type comparisons
+- Bugfix: Some performance optimizations were incorrectly
+  removed from ~+v~. These have been restored.
 - Enhancement: ~domain-size~ now works for arbitrary
   sequences which potentially contain variables, not just
   lists.
+- UX: ~*numeric-bounds-collapse-threshold*~ now defaults
+  to 0. The variable is still available for users to set
+  up resilience to floating-point arithmetic variations.
 * screamer/prob
 - Add gensyms in ~all-values-prob~ where before we were
   inserting symbols directly.
