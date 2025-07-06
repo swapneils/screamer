@@ -2365,9 +2365,6 @@ SHOULD NOT BE INVOKED OUTSIDE OF `walk'!"
                     (symbol-package (magic-continuation-argument continuation)))
                 (if (null types)
                     `(let ((,(magic-continuation-argument continuation) ,form))
-                       (declare
-                        (dynamic-extent
-                         ,(magic-continuation-argument continuation)))
                        ;; Peal off LAMBDA, arguments, and DECLARE.
                        ,@(rest (rest (rest (second continuation)))))
                     `(let ((,(magic-continuation-argument continuation)
